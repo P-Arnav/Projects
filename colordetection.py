@@ -8,7 +8,7 @@ import os
 headless = not os.environ.get("DISPLAY")
 
 # Initialize serial communication with Arduino
-arduino = serial.Serial('/dev/ttyUSB0', 9600, timeout=1)
+arduino = serial.Serial('/dev/ttyUSB0', 9600, timeout=1) #detect the respective port in RPI first
 time.sleep(2)
 arduino.reset_input_buffer()
 
@@ -99,7 +99,7 @@ try:
                 break
 
 finally:
-    cap.release()
+    cap.release()   
     if not headless:
         cv2.destroyAllWindows()
     arduino.close()
