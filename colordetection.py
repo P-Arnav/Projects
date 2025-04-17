@@ -97,15 +97,9 @@ try:
             cv2.imshow('ROI', roi)
             if key == ord('q'):
                 break
-        else:
-            time.sleep(0.05)  # prevent CPU overuse in headless mode
-
-except KeyboardInterrupt:
-    print("Interrupted by user (KeyboardInterrupt).")
 
 finally:
     cap.release()
     if not headless:
         cv2.destroyAllWindows()
     arduino.close()
-    print("Cleaned up and closed.")
