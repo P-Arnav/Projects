@@ -12,10 +12,27 @@ export default function AddItemModal({ onClose }) {
   const [barcode, setBarcode] = useState('')
   const [barcodeStatus, setBarcodeStatus] = useState('')  // '', 'loading', 'found', 'not_found'
   const [nameStatus, setNameStatus]       = useState('')  // '', 'loading', 'found', 'not_found'
+  const [unitCost, setUnitCost] = useState(0)  // per-unit base cost in ₹
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
+
+  function handleQuantityChange(e) {
+    const qty = Math.max(1, Number(e.target.value) || 1)
+    setForm(f => ({
+      ...f,
+      quantity: qty,
+      estimated_cost: unitCost > 0 ? String(Math.round(unitCost * qty)) : f.estimated_cost,
+    }))
+  }
+
+  function handleCostChange(e) {
+    const cost = Number(e.target.value) || 0
+    const qty  = Number(form.quantity) || 1
+    setUnitCost(cost / qty)
+    setForm(f => ({ ...f, estimated_cost: e.target.value }))
+  }
 
   async function handleBarcodeSubmit(e) {
     e.preventDefault()
@@ -42,11 +59,14 @@ export default function AddItemModal({ onClose }) {
     setNameStatus('loading')
     try {
       const result = await api.lookupItem(n)
+      if (result.estimated_cost > 0) setUnitCost(result.estimated_cost)
       setForm(f => ({
         ...f,
         category:       result.category,
         shelf_life:     String(result.shelf_life),
-        estimated_cost: result.estimated_cost > 0 ? String(result.estimated_cost) : f.estimated_cost,
+        estimated_cost: result.estimated_cost > 0
+          ? String(Math.round(result.estimated_cost * (Number(f.quantity) || 1)))
+          : f.estimated_cost,
       }))
       setNameStatus(result.source.startsWith('item-specific') ? 'found' : 'category')
     } catch {
@@ -139,7 +159,7 @@ export default function AddItemModal({ onClose }) {
           </Row>
           <TwoCol>
             <Row label="Qty">
-              <Input type="number" value={form.quantity} onChange={set('quantity')} min={1} />
+              <Input type="number" value={form.quantity} onChange={handleQuantityChange} min={1} />
             </Row>
             <Row label="Shelf life (days) *">
               <Input type="number" value={form.shelf_life} onChange={set('shelf_life')} min={1} placeholder="7" required />
@@ -155,7 +175,7 @@ export default function AddItemModal({ onClose }) {
           </TwoCol>
           <TwoCol>
             <Row label="Cost (₹)">
-              <Input type="number" value={form.estimated_cost} onChange={set('estimated_cost')} step={1} min={0} placeholder="0" />
+              <Input type="number" value={form.estimated_cost} onChange={handleCostChange} step={1} min={0} placeholder="0" />
             </Row>
             <Row label="Location">
               <Input value={form.location} onChange={set('location')} placeholder="shelf 1" />
