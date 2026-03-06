@@ -121,8 +121,8 @@ export default function AddItemModal({ onClose }) {
             </Row>
           </TwoCol>
           <TwoCol>
-            <Row label="Cost ($)">
-              <Input type="number" value={form.estimated_cost} onChange={set('estimated_cost')} step={0.01} min={0} placeholder="0.00" />
+            <Row label="Cost (₹)">
+              <Input type="number" value={form.estimated_cost} onChange={set('estimated_cost')} step={1} min={0} placeholder="0" />
             </Row>
             <Row label="Location">
               <Input value={form.location} onChange={set('location')} placeholder="shelf 1" />

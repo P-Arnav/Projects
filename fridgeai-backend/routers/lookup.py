@@ -117,6 +117,52 @@ ITEM_SHELF_LIFE: dict[str, int] = {
 }
 
 
+# ── Indian market prices (₹) for common grocery items ───────────────────────
+ITEM_COST: dict[str, float] = {
+    # dairy
+    "milk": 60, "yogurt": 45, "cheese": 120, "cheddar": 150,
+    "mozzarella": 130, "parmesan": 200, "cream cheese": 140,
+    "sour cream": 80, "butter": 55, "heavy cream": 90,
+    "cream": 80, "cottage cheese": 60,
+    # protein / eggs
+    "eggs": 80, "tofu": 80, "hummus": 120, "tempeh": 150,
+    # meat
+    "chicken": 150, "beef": 250, "ground beef": 250, "steak": 400,
+    "pork": 200, "ham": 180, "bacon": 200, "deli meat": 150,
+    "sausage": 150, "turkey": 300,
+    # fish
+    "fish": 200, "salmon": 500, "tuna": 150, "shrimp": 300, "cod": 250,
+    # vegetables
+    "carrot": 30, "broccoli": 60, "spinach": 30, "lettuce": 40,
+    "tomato": 30, "cucumber": 25, "bell pepper": 60, "pepper": 60,
+    "celery": 50, "onion": 25, "mushroom": 60, "kale": 50,
+    "zucchini": 50, "cauliflower": 40, "potato": 20, "garlic": 50,
+    "corn": 20, "asparagus": 80, "green beans": 40, "cabbage": 25,
+    "beet": 30, "avocado": 80,
+    # fruits
+    "apple": 80, "orange": 60, "banana": 40, "strawberry": 120,
+    "blueberry": 200, "grape": 80, "lemon": 20, "lime": 20,
+    "mango": 60, "pear": 80, "peach": 100, "watermelon": 20,
+    "pineapple": 60, "kiwi": 100, "plum": 80, "cherry": 150,
+    "raspberry": 200, "melon": 60,
+    # cooked / prepared
+    "bread": 40, "soup": 60, "sauce": 80,
+    # beverages
+    "juice": 80, "orange juice": 90, "apple juice": 80,
+}
+
+
+def get_item_cost(name: str) -> float:
+    """Return Indian market price in ₹ for a grocery item, or 0 if unknown."""
+    name_lower = name.lower()
+    if name_lower in ITEM_COST:
+        return ITEM_COST[name_lower]
+    for key in sorted(ITEM_COST, key=len, reverse=True):
+        if key in name_lower:
+            return ITEM_COST[key]
+    return 0.0
+
+
 def get_item_shelf_life(name: str, category: str) -> int:
     """Return shelf life in days, preferring item-specific over category default."""
     name_lower = name.lower()
@@ -286,12 +332,13 @@ def _map_category(tags: list[str]) -> str:
 
 
 class BarcodeResult(BaseModel):
-    barcode:     str
-    name:        Optional[str]
-    category:    str
-    shelf_life:  int           # days (from DEFAULT_SHELF_LIFE for the mapped category)
-    source:      str
-    off_found:   bool
+    barcode:        str
+    name:           Optional[str]
+    category:       str
+    shelf_life:     int    # days
+    estimated_cost: float  # ₹ Indian market price
+    source:         str
+    off_found:      bool
 
 
 @router.get("/barcode/{barcode}", response_model=BarcodeResult)
@@ -316,21 +363,24 @@ async def lookup_barcode(barcode: str):
             name=None,
             category="protein",
             shelf_life=DEFAULT_SHELF_LIFE["protein"],
+            estimated_cost=0.0,
             source="defaults (barcode not in Open Food Facts)",
             off_found=False,
         )
 
-    product   = data.get("product", {})
-    name      = product.get("product_name") or None
-    tags      = product.get("categories_tags") or []
-    category  = _map_category(tags)
-    shelf_life = DEFAULT_SHELF_LIFE.get(category, 7)
+    product        = data.get("product", {})
+    name           = product.get("product_name") or None
+    tags           = product.get("categories_tags") or []
+    category       = _map_category(tags)
+    shelf_life     = DEFAULT_SHELF_LIFE.get(category, 7)
+    estimated_cost = get_item_cost(name or "") if name else 0.0
 
     return BarcodeResult(
         barcode=barcode,
         name=name,
         category=category,
         shelf_life=shelf_life,
+        estimated_cost=estimated_cost,
         source="Open Food Facts",
         off_found=True,
     )

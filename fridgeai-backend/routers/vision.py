@@ -15,7 +15,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 from pydantic import BaseModel
 
-from routers.lookup import _map_category, get_item_shelf_life
+from routers.lookup import _map_category, get_item_shelf_life, get_item_cost
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ class DetectedItem(BaseModel):
     name:                str
     category:            str
     shelf_life:          int
+    estimated_cost:      float   # ₹ Indian market price
     confidence:          float
     count:               int
     spoilage_detected:   bool
@@ -188,15 +189,17 @@ async def scan_image(request: Request, file: UploadFile = File(...)):
     # ── Build response ──
     detected: list[DetectedItem] = []
     for label, data in label_data.items():
-        category   = _map_category([label])
-        shelf_life = get_item_shelf_life(label, category)
-        sp_scores  = data["spoilage_scores"]
-        avg_sp     = round(sum(sp_scores) / len(sp_scores), 3) if sp_scores else 0.0
+        category       = _map_category([label])
+        shelf_life     = get_item_shelf_life(label, category)
+        estimated_cost = get_item_cost(label)
+        sp_scores      = data["spoilage_scores"]
+        avg_sp         = round(sum(sp_scores) / len(sp_scores), 3) if sp_scores else 0.0
 
         detected.append(DetectedItem(
             name                = label,
             category            = category,
             shelf_life          = shelf_life,
+            estimated_cost      = estimated_cost,
             confidence          = round(sum(data["scores"]) / len(data["scores"]), 3),
             count               = len(data["scores"]),
             spoilage_detected   = avg_sp >= SPOILAGE_THRESHOLD,

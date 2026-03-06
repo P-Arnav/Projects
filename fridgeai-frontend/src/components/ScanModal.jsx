@@ -136,7 +136,7 @@ export default function ScanModal({ onClose }) {
         quantity:       1,
         shelf_life:     result.shelf_life,
         location:       '',
-        estimated_cost: 0,
+        estimated_cost: result.estimated_cost ?? 0,
         storage_temp:   4.0,
         humidity:       50.0,
       })
@@ -197,7 +197,7 @@ export default function ScanModal({ onClose }) {
       try {
         await api.postItem({
           name: item.name, category: item.category, quantity: item.count,
-          shelf_life: item.shelf_life, location: '', estimated_cost: 0,
+          shelf_life: item.shelf_life, location: '', estimated_cost: item.estimated_cost ?? 0,
           storage_temp: 4.0, humidity: 50.0,
         })
         added++
