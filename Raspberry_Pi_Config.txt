@@ -1,0 +1,52 @@
+#First add your python file in Raspberry Pi as a service for execution upon boot up (and make python file is executable)
+
+sudo nano /etc/systemd/system/filename.service
+
+#then add the following description into the GNU
+
+[Unit]
+Description=Color Detection Script
+After=network.target
+
+[Service]
+#ExecStartPre=/bin/sleep 10 for delaying the execution, giving time to initialize the camera if needed
+ExecStart=/usr/bin/python3 /home/pi/filename.py  #path may differ for your python file
+WorkingDirectory=/home/pi
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+User=pi #modify accordingly
+
+[Install]
+WantedBy=multi-user.target
+
+#Then do Ctrl + O, Enter, and then Ctrl + X
+
+#Enabling the services afterwards
+
+sudo systemctl daemon-reexec
+sudo systemctl daemon-reload
+sudo systemctl enable colordetection.service
+sudo systemctl start colordetection.service
+
+#optional for checking status of the service
+
+systemctl status colordetection.service
+
+
+----------------------------------------------------------------------------------------------------------------------------------------- for booting using jumper wires
+
+#open the config file
+
+sudo nano /boot/config.txt
+
+#at the end of the file, add the following line
+
+dtoverlay=gpio-shutdown,gpio_pin=3,active_low=1,gpio_pull=up
+
+#Then do Ctrl + O, Enter, and then Ctrl + X
+
+#and finally, reboot the rpi
+
+sudo reboot
+
