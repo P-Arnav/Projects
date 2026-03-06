@@ -11,6 +11,7 @@ export default function AddItemModal({ onClose }) {
   const [form, setForm] = useState(DEFAULTS)
   const [barcode, setBarcode] = useState('')
   const [barcodeStatus, setBarcodeStatus] = useState('')  // '', 'loading', 'found', 'not_found'
+  const [nameStatus, setNameStatus]       = useState('')  // '', 'loading', 'found', 'not_found'
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -32,6 +33,24 @@ export default function AddItemModal({ onClose }) {
       setBarcodeStatus(result.off_found ? 'found' : 'not_found')
     } catch {
       setBarcodeStatus('error')
+    }
+  }
+
+  async function handleNameLookup() {
+    const n = form.name.trim()
+    if (!n) return
+    setNameStatus('loading')
+    try {
+      const result = await api.lookupItem(n)
+      setForm(f => ({
+        ...f,
+        category:       result.category,
+        shelf_life:     String(result.shelf_life),
+        estimated_cost: result.estimated_cost > 0 ? String(result.estimated_cost) : f.estimated_cost,
+      }))
+      setNameStatus(result.source.startsWith('item-specific') ? 'found' : 'category')
+    } catch {
+      setNameStatus('not_found')
     }
   }
 
@@ -97,7 +116,21 @@ export default function AddItemModal({ onClose }) {
 
         <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <Row label="Name *">
-            <Input value={form.name} onChange={set('name')} placeholder="e.g. Whole Milk" required />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Input
+                value={form.name}
+                onChange={e => { set('name')(e); setNameStatus('') }}
+                placeholder="e.g. chicken, apple, milk"
+                required
+              />
+              <button type="button" onClick={handleNameLookup} disabled={nameStatus === 'loading'}
+                style={{ ...btnPrimary, whiteSpace: 'nowrap', padding: '8px 14px' }}>
+                {nameStatus === 'loading' ? '…' : 'Look up'}
+              </button>
+            </div>
+            {nameStatus === 'found'    && <div style={{ color: C.safe,  fontSize: 12, marginTop: 3 }}>Matched — category, shelf life & cost pre-filled.</div>}
+            {nameStatus === 'category' && <div style={{ color: C.warn,  fontSize: 12, marginTop: 3 }}>No exact match — filled from category defaults.</div>}
+            {nameStatus === 'not_found'&& <div style={{ color: C.critical, fontSize: 12, marginTop: 3 }}>Lookup failed. Fill fields manually.</div>}
           </Row>
           <Row label="Category *">
             <select value={form.category} onChange={handleCategoryChange} style={selectStyle}>

@@ -204,23 +204,26 @@ async def get_shelf_life(category: str):
 
 
 class ItemShelfLifeResponse(BaseModel):
-    name:        str
-    category:    str
-    shelf_life:  int
-    source:      str
+    name:           str
+    category:       str
+    shelf_life:     int
+    estimated_cost: float
+    source:         str
 
 
 @router.get("/item/{name}", response_model=ItemShelfLifeResponse)
 async def get_item_shelf_life_endpoint(name: str):
-    """Return shelf life and category for a specific grocery item name."""
-    name_lower = name.lower().strip()
-    category   = _map_category([name_lower])
-    shelf_life = get_item_shelf_life(name_lower, category)
-    source     = "item-specific (USDA FoodKeeper)" if name_lower in ITEM_SHELF_LIFE or any(k in name_lower for k in ITEM_SHELF_LIFE) else "category default"
+    """Return category, shelf life, and estimated cost for a grocery item name."""
+    name_lower     = name.lower().strip()
+    category       = _map_category([name_lower])
+    shelf_life     = get_item_shelf_life(name_lower, category)
+    estimated_cost = get_item_cost(name_lower)
+    source         = "item-specific (USDA FoodKeeper)" if name_lower in ITEM_SHELF_LIFE or any(k in name_lower for k in ITEM_SHELF_LIFE) else "category default"
     return ItemShelfLifeResponse(
         name=name,
         category=category,
         shelf_life=shelf_life,
+        estimated_cost=estimated_cost,
         source=source,
     )
 

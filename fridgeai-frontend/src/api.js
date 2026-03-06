@@ -39,6 +39,9 @@ export const api = {
 
   getShelfLife: (category) =>
     fetch(`/lookup/shelf-life/${encodeURIComponent(category)}`).then(r => r.json()),
+
+  lookupItem: (name) =>
+    fetch(`/lookup/item/${encodeURIComponent(name)}`).then(r => { if (!r.ok) throw r; return r.json() }),
 }
 
 // WebSocket singleton with auto-reconnect
