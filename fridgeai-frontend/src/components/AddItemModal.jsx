@@ -19,17 +19,18 @@ export default function AddItemModal({ onClose }) {
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
   function handleQuantityChange(e) {
-    const qty = Math.max(1, Number(e.target.value) || 1)
+    const raw = e.target.value
+    const qty = Math.max(1, Number(raw) || 1)
     setForm(f => ({
       ...f,
-      quantity: qty,
+      quantity: raw,  // keep raw so user can clear and retype
       estimated_cost: unitCost > 0 ? String(Math.round(unitCost * qty)) : f.estimated_cost,
     }))
   }
 
   function handleCostChange(e) {
     const cost = Number(e.target.value) || 0
-    const qty  = Number(form.quantity) || 1
+    const qty  = Math.max(1, Number(form.quantity) || 1)
     setUnitCost(cost / qty)
     setForm(f => ({ ...f, estimated_cost: e.target.value }))
   }
