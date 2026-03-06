@@ -28,6 +28,12 @@ TEMP_NORM:  tuple = (0.0,  30.0)   # [min, max] degC
 HUMID_NORM: tuple = (0.0, 100.0)   # [min, max] %
 CAT_NORM:   tuple = (1.0,   8.0)   # [min, max] ordinal encoding
 
+# Category ordinal encodings used by ASLIE
+CATEGORY_ENC: dict[str, int] = {
+    "dairy": 1, "protein": 2, "meat": 3, "vegetable": 4,
+    "fruit": 5, "fish": 6, "cooked": 7, "beverage": 8,
+}
+
 # Alert thresholds
 ALERT_CRITICAL:  float = 0.80
 ALERT_WARNING:   float = 0.50

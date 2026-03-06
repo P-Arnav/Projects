@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from core.config import ALERT_CRITICAL, ALERT_WARNING, ALERT_USE_TODAY
+from core.config import ALERT_CRITICAL, ALERT_WARNING, ALERT_USE_TODAY, CATEGORY_ENC
 from core.database import get_db
 from services import aslie, fapf
 from websocket.manager import manager
@@ -27,10 +27,12 @@ async def run_for_item(item_id: str) -> None:
         now_utc = datetime.now(tz=timezone.utc)
         elapsed_days = (now_utc - entry_time.replace(tzinfo=timezone.utc)).total_seconds() / 86400.0
 
+        category_enc = CATEGORY_ENC.get(row["category"], 4)  # default: vegetable
         ps, remaining = aslie.compute(
             t_elapsed=elapsed_days,
             temp=row["storage_temp"],
             shelf_life=row["shelf_life"],
+            category_enc=category_enc,
             humidity=row["humidity"],
         )
 
