@@ -245,7 +245,7 @@ export default function ScanModal({ onClose }) {
         {/* Video feed */}
         <div style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', background: C.surface2, marginBottom: 14 }}>
           <video ref={videoRef} autoPlay playsInline muted
-            style={{ width: '100%', display: 'block', maxHeight: 300, objectFit: 'cover' }} />
+            style={{ width: '100%', display: 'block', maxHeight: mode === 'detect' ? 420 : 220, objectFit: 'cover' }} />
           {status === 'starting' && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.muted, fontSize: 13 }}>
               Starting camera…
