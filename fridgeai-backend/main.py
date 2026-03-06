@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
 import logging
+import os
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from core.database import init_db
 from services.settle_timer import recover_on_startup
@@ -31,6 +33,15 @@ app = FastAPI(
     description="Real-time sync engine for the FridgeAI food waste reduction system.",
     version="0.1.0",
     lifespan=lifespan,
+)
+
+_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(items_router.router)

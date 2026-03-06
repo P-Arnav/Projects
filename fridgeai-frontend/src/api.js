@@ -1,47 +1,51 @@
-// REST helpers — all relative paths, proxied by Vite to localhost:8000
+// In production, set VITE_API_URL to the deployed backend (e.g. https://fridgeai.railway.app)
+// In dev, leave unset — Vite proxy forwards to localhost:8000
+const BASE = import.meta.env.VITE_API_URL ?? ''
+
+// REST helpers
 export const api = {
   getItems: (since) =>
-    fetch(since ? `/items?updated_since=${encodeURIComponent(since)}` : '/items')
+    fetch(since ? `${BASE}/items?updated_since=${encodeURIComponent(since)}` : `${BASE}/items`)
       .then(r => r.json()),
 
   postItem: (body) =>
-    fetch('/items', {
+    fetch(`${BASE}/items`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).then(r => { if (!r.ok) throw r; return r.json() }),
 
   deleteItem: (id, reason = 'consumed') =>
-    fetch(`/items/${id}?reason=${reason}`, { method: 'DELETE' }),
+    fetch(`${BASE}/items/${id}?reason=${reason}`, { method: 'DELETE' }),
 
   patchItem: (id, body) =>
-    fetch(`/items/${id}`, {
+    fetch(`${BASE}/items/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).then(r => r.json()),
 
   getAlerts: (since) =>
-    fetch(since ? `/alerts?since=${encodeURIComponent(since)}` : '/alerts')
+    fetch(since ? `${BASE}/alerts?since=${encodeURIComponent(since)}` : `${BASE}/alerts`)
       .then(r => r.json()),
 
-  getStatus: () => fetch('/status').then(r => r.json()),
+  getStatus: () => fetch(`${BASE}/status`).then(r => r.json()),
 
   scanFridge: (blob) => {
     const fd = new FormData()
     fd.append('file', blob, 'scan.jpg')
-    return fetch('/vision/scan', { method: 'POST', body: fd })
+    return fetch(`${BASE}/vision/scan`, { method: 'POST', body: fd })
       .then(r => { if (!r.ok) throw r; return r.json() })
   },
 
   lookupBarcode: (barcode) =>
-    fetch(`/lookup/barcode/${encodeURIComponent(barcode)}`).then(r => r.json()),
+    fetch(`${BASE}/lookup/barcode/${encodeURIComponent(barcode)}`).then(r => r.json()),
 
   getShelfLife: (category) =>
-    fetch(`/lookup/shelf-life/${encodeURIComponent(category)}`).then(r => r.json()),
+    fetch(`${BASE}/lookup/shelf-life/${encodeURIComponent(category)}`).then(r => r.json()),
 
   lookupItem: (name) =>
-    fetch(`/lookup/item/${encodeURIComponent(name)}`).then(r => { if (!r.ok) throw r; return r.json() }),
+    fetch(`${BASE}/lookup/item/${encodeURIComponent(name)}`).then(r => { if (!r.ok) throw r; return r.json() }),
 }
 
 // WebSocket singleton with auto-reconnect
@@ -51,8 +55,10 @@ export function createWsClient(dispatch) {
 
   function connect() {
     if (dead) return
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    ws = new WebSocket(`${proto}://${location.host}/ws?client_type=web`)
+    const wsBase = BASE
+      ? BASE.replace(/^http/, 'ws')
+      : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
+    ws = new WebSocket(`${wsBase}/ws?client_type=web`)
 
     ws.onopen = () => dispatch({ type: 'WS_STATUS', status: 'connected' })
 
