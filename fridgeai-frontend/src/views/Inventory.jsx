@@ -3,11 +3,13 @@ import { C, CATEGORIES } from '../constants.js'
 import ItemCard from '../components/ItemCard.jsx'
 import AddItemModal from '../components/AddItemModal.jsx'
 import ScanModal from '../components/ScanModal.jsx'
+import ReceiptModal from '../components/ReceiptModal.jsx'
 
 export default function Inventory({ items }) {
   const [filter, setFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
   const [showScan, setShowScan] = useState(false)
+  const [showReceipt, setShowReceipt] = useState(false)
 
   const visible = filter === 'all' ? items : items.filter(i => i.category === filter)
 
@@ -24,6 +26,13 @@ export default function Inventory({ items }) {
           })}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setShowReceipt(true)} style={{
+            background: 'none', color: C.muted, border: `1px solid ${C.border2}`, borderRadius: 8,
+            padding: '9px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13,
+            fontFamily: "'Syne', sans-serif",
+          }}>
+            Upload Receipt
+          </button>
           <button onClick={() => setShowScan(true)} style={{
             background: 'none', color: C.teal, border: `1px solid ${C.teal}`, borderRadius: 8,
             padding: '9px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13,
@@ -54,8 +63,9 @@ export default function Inventory({ items }) {
         </div>
       )}
 
-      {showModal && <AddItemModal onClose={() => setShowModal(false)} />}
-      {showScan  && <ScanModal    onClose={() => setShowScan(false)}  />}
+      {showModal   && <AddItemModal   onClose={() => setShowModal(false)} />}
+      {showScan    && <ScanModal      onClose={() => setShowScan(false)} />}
+      {showReceipt && <ReceiptModal   onClose={() => setShowReceipt(false)} />}
     </div>
   )
 }

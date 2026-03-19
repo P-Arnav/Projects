@@ -1,4 +1,6 @@
+import { useState, useEffect } from 'react'
 import { C, riskColor, riskLabel } from '../constants.js'
+import { api } from '../api.js'
 
 const fmt = (n, d = 2) => n == null ? '—' : Number(n).toFixed(d)
 const fmtPct = (n) => n == null ? '—' : `${(n * 100).toFixed(0)}%`
@@ -12,15 +14,106 @@ function buildForecast(items) {
   }))
 }
 
-export default function Analytics({ items }) {
+export default function Analytics({ items, dispatch, groceryItems }) {
   const scored = [...items].sort((a, b) => (b.fapf_score ?? -Infinity) - (a.fapf_score ?? -Infinity))
   const forecast = buildForecast(items)
   const maxCount = Math.max(...forecast.map(f => f.count), 1)
-
   const barColors = ['#34d399', '#6ee7b7', '#fbbf24', '#f97316', '#ff4d6d', '#ff4d6d', '#ff4d6d']
+
+  const [restock, setRestock] = useState([])
+  const [restockLoading, setRestockLoading] = useState(false)
+  const [addedIds, setAddedIds] = useState(new Set())
+
+  useEffect(() => {
+    setRestockLoading(true)
+    api.getRestock()
+      .then(setRestock)
+      .catch(() => {})
+      .finally(() => setRestockLoading(false))
+  }, [items])
+
+  const handleAddToGrocery = async (suggestion) => {
+    try {
+      await api.addGrocery({
+        name: suggestion.name,
+        category: suggestion.category,
+        quantity: 1,
+        source: 'restock',
+      })
+      setAddedIds(prev => new Set([...prev, suggestion.name]))
+    } catch {}
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+
+      {/* Restock Suggestions */}
+      <section>
+        <SectionTitle>Restock Suggestions</SectionTitle>
+        {restockLoading ? (
+          <div style={{ color: C.muted, fontSize: 13, padding: '16px 0' }}>Analysing pantry…</div>
+        ) : restock.length === 0 ? (
+          <div style={{
+            background: C.surface, border: `1px solid ${C.border}`,
+            borderRadius: 12, padding: '20px 24px',
+            color: C.muted, fontSize: 13,
+          }}>
+            No restock needed — your pantry looks good.
+          </div>
+        ) : (
+          <div style={{
+            background: C.surface, border: `1px solid ${C.border}`,
+            borderRadius: 12, overflow: 'hidden',
+          }}>
+            {restock.map((s, i) => {
+              const alreadyIn = groceryItems.some(g => g.name.toLowerCase() === s.name.toLowerCase() && !g.checked)
+              const justAdded = addedIds.has(s.name)
+              const priorityColor = s.priority === 'urgent' ? C.critical : C.warn
+              return (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  padding: '12px 20px',
+                  borderTop: i === 0 ? 'none' : `1px solid ${C.border}`,
+                  background: i % 2 === 0 ? 'transparent' : C.surface2 + '44',
+                }}>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, color: priorityColor,
+                    background: priorityColor + '22', borderRadius: 4,
+                    padding: '2px 8px', letterSpacing: '0.05em', flexShrink: 0,
+                  }}>
+                    {s.priority === 'urgent' ? 'URGENT' : 'LOW STOCK'}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ color: C.text, fontWeight: 600, fontSize: 14 }}>{s.name}</span>
+                    <span style={{ color: C.muted, fontSize: 12, marginLeft: 8 }}>{s.category}</span>
+                    <div style={{ color: C.muted, fontSize: 12, marginTop: 2 }}>{s.reason}</div>
+                  </div>
+                  {s.p_spoil != null && (
+                    <span style={{ color: riskColor(s.p_spoil), fontSize: 12, fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>
+                      {fmtPct(s.p_spoil)}
+                    </span>
+                  )}
+                  <button
+                    onClick={() => handleAddToGrocery(s)}
+                    disabled={alreadyIn || justAdded}
+                    style={{
+                      background: (alreadyIn || justAdded) ? C.surface2 : C.teal + '18',
+                      border: `1px solid ${(alreadyIn || justAdded) ? C.border : C.teal}`,
+                      color: (alreadyIn || justAdded) ? C.muted : C.teal,
+                      borderRadius: 6, padding: '5px 12px',
+                      cursor: (alreadyIn || justAdded) ? 'default' : 'pointer',
+                      fontSize: 12, fontFamily: "'Syne', sans-serif",
+                      fontWeight: 600, flexShrink: 0,
+                    }}
+                  >
+                    {alreadyIn || justAdded ? '✓ In list' : '+ Grocery'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </section>
 
       {/* 7-Day Forecast Chart */}
       <section>

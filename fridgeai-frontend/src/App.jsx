@@ -4,6 +4,8 @@ import { api, createWsClient } from './api.js'
 import Inventory from './views/Inventory.jsx'
 import Alerts from './views/Alerts.jsx'
 import Analytics from './views/Analytics.jsx'
+import GroceryList from './views/GroceryList.jsx'
+import Recipes from './views/Recipes.jsx'
 import AlertBanner from './components/AlertBanner.jsx'
 
 // ─── Reducer ────────────────────────────────────────────────────────────────
@@ -11,6 +13,7 @@ import AlertBanner from './components/AlertBanner.jsx'
 const initial = {
   items: [],
   alerts: [],
+  groceryItems: [],
   toasts: [],
   wsStatus: 'connecting',
   view: 'inventory',
@@ -18,10 +21,11 @@ const initial = {
 
 function reducer(state, action) {
   switch (action.type) {
-    case 'INIT_ITEMS':  return { ...state, items: action.items }
-    case 'INIT_ALERTS': return { ...state, alerts: action.alerts }
-    case 'WS_STATUS':   return { ...state, wsStatus: action.status }
-    case 'SET_VIEW':    return { ...state, view: action.view }
+    case 'INIT_ITEMS':   return { ...state, items: action.items }
+    case 'INIT_ALERTS':  return { ...state, alerts: action.alerts }
+    case 'INIT_GROCERY': return { ...state, groceryItems: action.items }
+    case 'WS_STATUS':    return { ...state, wsStatus: action.status }
+    case 'SET_VIEW':     return { ...state, view: action.view }
 
     case 'ADD_ITEM':
       return { ...state, items: [action.item, ...state.items] }
@@ -51,6 +55,24 @@ function reducer(state, action) {
     case 'REMOVE_TOAST':
       return { ...state, toasts: state.toasts.filter(t => t._toastId !== action.id) }
 
+    // Grocery actions
+    case 'ADD_GROCERY':
+      return { ...state, groceryItems: [action.item, ...state.groceryItems] }
+
+    case 'UPDATE_GROCERY':
+      return {
+        ...state,
+        groceryItems: state.groceryItems.map(g =>
+          g.grocery_id === action.item.grocery_id ? action.item : g
+        ),
+      }
+
+    case 'REMOVE_GROCERY':
+      return { ...state, groceryItems: state.groceryItems.filter(g => g.grocery_id !== action.grocery_id) }
+
+    case 'CLEAR_CHECKED_GROCERY':
+      return { ...state, groceryItems: state.groceryItems.filter(g => !g.checked) }
+
     case 'WS_MESSAGE': {
       const { event, data } = action.msg
       if (event === 'ITEM_INSERTED') return reducer(state, { type: 'ADD_ITEM', item: data })
@@ -58,6 +80,13 @@ function reducer(state, action) {
       if (event === 'ITEM_UPDATED')  return reducer(state, { type: 'UPDATE_ITEM', patch: { item_id: data.item_id, ...data.changed_fields } })
       if (event === 'ITEM_DELETED')  return reducer(state, { type: 'REMOVE_ITEM', item_id: data.item_id })
       if (event === 'ALERT_FIRED')   return reducer(state, { type: 'ADD_ALERT', alert: data })
+      if (event === 'GROCERY_UPDATED') {
+        if (data.deleted)        return reducer(state, { type: 'REMOVE_GROCERY', grocery_id: data.grocery_id })
+        if (data.cleared_checked) return reducer(state, { type: 'CLEAR_CHECKED_GROCERY' })
+        const exists = state.groceryItems.some(g => g.grocery_id === data.grocery_id)
+        if (exists) return reducer(state, { type: 'UPDATE_GROCERY', item: data })
+        return reducer(state, { type: 'ADD_GROCERY', item: data })
+      }
       return state
     }
 
@@ -75,6 +104,7 @@ export default function App() {
   useEffect(() => {
     api.getItems().then(items => dispatch({ type: 'INIT_ITEMS', items })).catch(() => {})
     api.getAlerts().then(alerts => dispatch({ type: 'INIT_ALERTS', alerts })).catch(() => {})
+    api.getGrocery().then(items => dispatch({ type: 'INIT_GROCERY', items })).catch(() => {})
   }, [])
 
   // WebSocket
@@ -97,6 +127,15 @@ export default function App() {
   }, [state.toasts])
 
   const alertCount = state.alerts.length
+  const groceryCount = state.groceryItems.filter(g => !g.checked).length
+
+  const tabs = [
+    { id: 'inventory', label: 'Inventory' },
+    { id: 'alerts',    label: alertCount ? `Alerts (${alertCount})` : 'Alerts' },
+    { id: 'analytics', label: 'Analytics' },
+    { id: 'grocery',   label: groceryCount ? `Grocery (${groceryCount})` : 'Grocery' },
+    { id: 'recipes',   label: 'Recipes' },
+  ]
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg }}>
@@ -117,11 +156,7 @@ export default function App() {
         </div>
 
         <nav style={{ display: 'flex', gap: 4 }}>
-          {[
-            { id: 'inventory', label: 'Inventory' },
-            { id: 'alerts',    label: `Alerts${alertCount ? ` (${alertCount})` : ''}` },
-            { id: 'analytics', label: 'Analytics' },
-          ].map(tab => (
+          {tabs.map(tab => (
             <NavTab
               key={tab.id}
               label={tab.label}
@@ -138,7 +173,9 @@ export default function App() {
       <main style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 24px' }}>
         {state.view === 'inventory' && <Inventory items={state.items} />}
         {state.view === 'alerts'    && <Alerts alerts={state.alerts} />}
-        {state.view === 'analytics' && <Analytics items={state.items} />}
+        {state.view === 'analytics' && <Analytics items={state.items} dispatch={dispatch} groceryItems={state.groceryItems} />}
+        {state.view === 'grocery'   && <GroceryList groceryItems={state.groceryItems} dispatch={dispatch} />}
+        {state.view === 'recipes'   && <Recipes items={state.items} />}
       </main>
     </div>
   )

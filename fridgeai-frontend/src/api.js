@@ -46,6 +46,53 @@ export const api = {
 
   lookupItem: (name) =>
     fetch(`${BASE}/lookup/item/${encodeURIComponent(name)}`).then(r => { if (!r.ok) throw r; return r.json() }),
+
+  // Grocery list
+  getGrocery: () =>
+    fetch(`${BASE}/grocery`).then(r => r.json()),
+
+  addGrocery: (body) =>
+    fetch(`${BASE}/grocery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(r => { if (!r.ok) throw r; return r.json() }),
+
+  updateGrocery: (id, body) =>
+    fetch(`${BASE}/grocery/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(r => r.json()),
+
+  deleteGrocery: (id) =>
+    fetch(`${BASE}/grocery/${id}`, { method: 'DELETE' }),
+
+  clearCheckedGrocery: () =>
+    fetch(`${BASE}/grocery/checked`, { method: 'DELETE' }),
+
+  // Restock suggestions
+  getRestock: () =>
+    fetch(`${BASE}/restock`).then(r => r.json()),
+
+  // Recipes
+  getRecipes: () =>
+    fetch(`${BASE}/recipes/suggestions`).then(r => { if (!r.ok) throw r; return r.json() }),
+
+  cookRecipe: (mealId, itemIds) =>
+    fetch(`${BASE}/recipes/${mealId}/cook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_ids: itemIds }),
+    }).then(r => r.json()),
+
+  // Receipt OCR
+  scanReceipt: (file) => {
+    const fd = new FormData()
+    fd.append('file', file, file.name)
+    return fetch(`${BASE}/receipt/scan`, { method: 'POST', body: fd })
+      .then(r => { if (!r.ok) throw r; return r.json() })
+  },
 }
 
 // WebSocket singleton with auto-reconnect

@@ -9,8 +9,12 @@ export default defineConfig({
       '/alerts': 'http://localhost:8000',
       '/status': 'http://localhost:8000',
       '/lookup': 'http://localhost:8000',
-      '/vision': 'http://localhost:8000',
-      '/ws':     { target: 'ws://localhost:8000', ws: true, rewriteWsOrigin: true },
+      '/vision':  'http://localhost:8000',
+      '/grocery': 'http://localhost:8000',
+      '/restock': 'http://localhost:8000',
+      '/recipes': 'http://localhost:8000',
+      '/receipt': 'http://localhost:8000',
+      '/ws':      { target: 'ws://localhost:8000', ws: true, rewriteWsOrigin: true },
     }
   }
 })

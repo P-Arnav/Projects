@@ -12,6 +12,10 @@ from routers import alerts as alerts_router
 from routers import status as status_router
 from routers import lookup as lookup_router
 from routers import vision as vision_router
+from routers import grocery as grocery_router
+from routers import restock as restock_router
+from routers import recipes as recipes_router
+from routers import receipt as receipt_router
 from websocket.ws_router import router as ws_router
 
 logging.basicConfig(
@@ -49,4 +53,8 @@ app.include_router(alerts_router.router)
 app.include_router(status_router.router)
 app.include_router(lookup_router.router)
 app.include_router(vision_router.router)
+app.include_router(grocery_router.router)
+app.include_router(restock_router.router)
+app.include_router(recipes_router.router)
+app.include_router(receipt_router.router)
 app.include_router(ws_router)

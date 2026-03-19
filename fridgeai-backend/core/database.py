@@ -35,11 +35,24 @@ CREATE TABLE IF NOT EXISTS alerts (
 )
 """
 
+CREATE_GROCERY = """
+CREATE TABLE IF NOT EXISTS grocery_items (
+    grocery_id TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    category   TEXT NOT NULL DEFAULT 'vegetable',
+    quantity   INTEGER NOT NULL DEFAULT 1,
+    checked    INTEGER NOT NULL DEFAULT 0,
+    source     TEXT NOT NULL DEFAULT 'manual',
+    created_at TEXT NOT NULL
+)
+"""
+
 
 async def init_db() -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(CREATE_ITEMS)
         await db.execute(CREATE_ALERTS)
+        await db.execute(CREATE_GROCERY)
         await db.commit()
 
 
