@@ -20,6 +20,15 @@ _SCORE_FIELDS = {"shelf_life", "storage_temp", "humidity"}
 
 @router.post("", response_model=ItemRead, status_code=status.HTTP_201_CREATED)
 async def create_item(body: ItemCreate, conn: asyncpg.Connection = Depends(db_dependency)):
+    if not body.name or not body.name.strip():
+        raise HTTPException(status_code=400, detail="Item name cannot be empty")
+    if body.quantity <= 0:
+        raise HTTPException(status_code=400, detail="Quantity must be greater than 0")
+    if body.shelf_life <= 0:
+        raise HTTPException(status_code=400, detail="Shelf life must be greater than 0")
+    if body.storage_temp < -30 or body.storage_temp > 60:
+        raise HTTPException(status_code=400, detail="Storage temperature out of valid range")
+
     item_id = str(uuid4())
     now = datetime.now(tz=timezone.utc).isoformat()
 

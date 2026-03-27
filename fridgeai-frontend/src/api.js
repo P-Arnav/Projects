@@ -90,6 +90,10 @@ export const api = {
     fetch(`${BASE}/recipes/suggestions`, { headers: authHeader() })
       .then(r => { if (!r.ok) throw r; return r.json() }),
 
+  getRecipeDetails: (mealId) =>
+    fetch(`${BASE}/recipes/${mealId}/details`, { headers: authHeader() })
+      .then(r => { if (!r.ok) throw r; return r.json() }),
+
   cookRecipe: (mealId, itemIds) =>
     fetch(`${BASE}/recipes/${mealId}/cook`, {
       method: 'POST',

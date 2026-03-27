@@ -28,6 +28,14 @@ class Recipe(BaseModel):
     missed_ingredients: list[str] = []
 
 
+class RecipeDetails(BaseModel):
+    meal_id: str
+    source_url: Optional[str] = None
+    ready_in_minutes: Optional[int] = None
+    servings: Optional[int] = None
+    steps: list[str] = []   # plain-text steps from analyzedInstructions
+
+
 class CookRequest(BaseModel):
     item_ids: list[str] = []
 
@@ -36,7 +44,11 @@ class CookRequest(BaseModel):
 async def get_recipe_suggestions(conn: asyncpg.Connection = Depends(db_dependency)):
     """Return recipe suggestions based on current pantry items (via Spoonacular)."""
     rows = await conn.fetch(
-        "SELECT DISTINCT name FROM items WHERE (p_spoil IS NULL OR p_spoil < 0.9) ORDER BY p_spoil DESC NULLS LAST"
+        """SELECT name, MAX(COALESCE(p_spoil, 0)) AS ps
+           FROM items
+           WHERE (p_spoil IS NULL OR p_spoil < 0.9)
+           GROUP BY name
+           ORDER BY ps DESC"""
     )
 
     if not rows:
@@ -60,7 +72,7 @@ async def get_recipe_suggestions(conn: asyncpg.Connection = Depends(db_dependenc
             resp.raise_for_status()
             data = resp.json()
     except Exception as exc:
-        logger.warning("Spoonacular request failed: %s", exc)
+        logger.error("Spoonacular request failed: %s", exc, exc_info=True)
         return []
 
     recipes: list[Recipe] = []
@@ -74,6 +86,43 @@ async def get_recipe_suggestions(conn: asyncpg.Connection = Depends(db_dependenc
         ))
 
     return recipes
+
+
+@router.get("/{meal_id}/details", response_model=RecipeDetails)
+async def get_recipe_details(meal_id: str):
+    """Fetch full recipe details (instructions, source URL) from Spoonacular on demand."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"{SPOONACULAR_BASE}/recipes/{meal_id}/information",
+                params={"apiKey": SPOONACULAR_KEY, "addRecipeInformation": True},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:
+        logger.error("Spoonacular details request failed: %s", exc, exc_info=True)
+        return RecipeDetails(meal_id=meal_id)
+
+    # Extract plain-text steps from analyzedInstructions (preferred) or fall back to raw HTML stripped
+    steps: list[str] = []
+    analyzed = data.get("analyzedInstructions") or []
+    if analyzed:
+        for step in analyzed[0].get("steps", []):
+            text = step.get("step", "").strip()
+            if text:
+                steps.append(text)
+    elif data.get("instructions"):
+        import re
+        plain = re.sub(r"<[^>]+>", " ", data["instructions"])
+        steps = [s.strip() for s in re.split(r"[\n.]+", plain) if s.strip()]
+
+    return RecipeDetails(
+        meal_id=meal_id,
+        source_url=data.get("sourceUrl"),
+        ready_in_minutes=data.get("readyInMinutes"),
+        servings=data.get("servings"),
+        steps=steps,
+    )
 
 
 @router.post("/{meal_id}/cook")

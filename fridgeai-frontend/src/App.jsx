@@ -1,4 +1,4 @@
-import { useReducer, useEffect, useRef, useState } from 'react'
+import { useReducer, useEffect, useRef, useState, useCallback } from 'react'
 import { C } from './constants.js'
 import { api, createWsClient } from './api.js'
 import Inventory from './views/Inventory.jsx'
@@ -100,12 +100,27 @@ function reducer(state, action) {
 
 // ─── App ────────────────────────────────────────────────────────────────────
 
+// Inject keyframes once at module level
+const styleEl = document.createElement('style')
+styleEl.textContent = `
+  @keyframes viewIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+`
+document.head.appendChild(styleEl)
+
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initial)
   const toastTimers = useRef({})
   const [authUser, setAuthUser] = useState(null)
   const [requireAuth, setRequireAuth] = useState(false)
   const [authChecked, setAuthChecked] = useState(false)
+  const [dataLoading, setDataLoading] = useState(true)
+  const [animKey, setAnimKey] = useState(0)
 
   // Check auth config then validate any stored token
   useEffect(() => {
@@ -133,10 +148,18 @@ export default function App() {
   useEffect(() => {
     if (!authChecked) return
     if (requireAuth && !authUser) return
-    api.getItems().then(items => dispatch({ type: 'INIT_ITEMS', items })).catch(() => {})
-    api.getAlerts().then(alerts => dispatch({ type: 'INIT_ALERTS', alerts })).catch(() => {})
-    api.getGrocery().then(items => dispatch({ type: 'INIT_GROCERY', items })).catch(() => {})
+    setDataLoading(true)
+    Promise.all([
+      api.getItems().then(items => dispatch({ type: 'INIT_ITEMS', items })).catch(() => {}),
+      api.getAlerts().then(alerts => dispatch({ type: 'INIT_ALERTS', alerts })).catch(() => {}),
+      api.getGrocery().then(items => dispatch({ type: 'INIT_GROCERY', items })).catch(() => {}),
+    ]).finally(() => setDataLoading(false))
   }, [authChecked, authUser, requireAuth])
+
+  const setView = useCallback((view) => {
+    dispatch({ type: 'SET_VIEW', view })
+    setAnimKey(k => k + 1)
+  }, [])
 
   // WebSocket
   useEffect(() => {
@@ -175,17 +198,19 @@ export default function App() {
   const groceryCount = state.groceryItems.filter(g => !g.checked).length
 
   const navItems = [
-    { id: 'inventory', label: 'Inventory',  icon: <GridIcon /> },
-    { id: 'alerts',    label: 'Alerts',     icon: <BellIcon />,  badge: alertCount },
-    { id: 'analytics', label: 'Analytics',  icon: <ChartIcon /> },
-    { id: 'grocery',   label: 'Grocery',    icon: <CartIcon />,  badge: groceryCount },
-    { id: 'recipes',   label: 'Recipes',    icon: <CupIcon /> },
+    { id: 'inventory', label: 'Inventory',  icon: <GridIcon />,  color: C.teal },
+    { id: 'alerts',    label: 'Alerts',     icon: <BellIcon />,  color: C.critical, badge: alertCount },
+    { id: 'analytics', label: 'Analytics',  icon: <ChartIcon />, color: C.blue },
+    { id: 'grocery',   label: 'Grocery',    icon: <CartIcon />,  color: C.warn,     badge: groceryCount },
+    { id: 'recipes',   label: 'Recipes',    icon: <CupIcon />,   color: C.orange },
   ]
 
-  const viewLabel = navItems.find(n => n.id === state.view)?.label ?? ''
+  const activeNav = navItems.find(n => n.id === state.view)
+  const viewLabel = activeNav?.label ?? ''
+  const viewColor = activeNav?.color ?? C.teal
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: C.bg, overflow: 'hidden' }}>
+    <div style={{ display: 'flex', height: '100vh', background: C.bg }}>
       <AlertBanner toasts={state.toasts} dispatch={dispatch} />
 
       {/* ── Sidebar ── */}
@@ -211,8 +236,9 @@ export default function App() {
             icon={item.icon}
             label={item.label}
             badge={item.badge}
+            color={item.color}
             active={state.view === item.id}
-            onClick={() => dispatch({ type: 'SET_VIEW', view: item.id })}
+            onClick={() => setView(item.id)}
           />
         ))}
       </aside>
@@ -226,7 +252,7 @@ export default function App() {
           padding: '0 24px', flexShrink: 0,
         }}>
           <div style={{
-            fontSize: 11, fontWeight: 700, color: C.muted,
+            fontSize: 11, fontWeight: 700, color: viewColor,
             letterSpacing: '0.12em', textTransform: 'uppercase',
             fontFamily: "'Syne', sans-serif",
           }}>
@@ -250,19 +276,35 @@ export default function App() {
         </header>
 
         {/* Content */}
-        <main style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
-          {state.view === 'inventory' && <Inventory items={state.items} />}
-          {state.view === 'alerts'    && <Alerts alerts={state.alerts} />}
-          {state.view === 'analytics' && <Analytics items={state.items} dispatch={dispatch} groceryItems={state.groceryItems} />}
-          {state.view === 'grocery'   && <GroceryList groceryItems={state.groceryItems} dispatch={dispatch} />}
-          {state.view === 'recipes'   && <Recipes items={state.items} />}
+        <main style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', position: 'relative' }}>
+          {dataLoading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 16 }}>
+              <div style={{
+                width: 34, height: 34, borderRadius: '50%',
+                border: `3px solid ${C.border2}`,
+                borderTopColor: C.teal,
+                animation: 'spin 0.75s linear infinite',
+              }} />
+              <span style={{ fontSize: 12, color: C.muted, fontFamily: "'Syne', sans-serif", letterSpacing: '0.08em' }}>
+                LOADING
+              </span>
+            </div>
+          ) : (
+            <div key={animKey} style={{ animation: 'viewIn 0.22s ease both' }}>
+              {state.view === 'inventory' && <Inventory items={state.items} />}
+              {state.view === 'alerts'    && <Alerts alerts={state.alerts} />}
+              {state.view === 'analytics' && <Analytics items={state.items} dispatch={dispatch} groceryItems={state.groceryItems} />}
+              {state.view === 'grocery'   && <GroceryList groceryItems={state.groceryItems} dispatch={dispatch} />}
+              {state.view === 'recipes'   && <Recipes items={state.items} />}
+            </div>
+          )}
         </main>
       </div>
     </div>
   )
 }
 
-function SidebarBtn({ icon, label, active, badge, onClick }) {
+function SidebarBtn({ icon, label, active, badge, color, onClick }) {
   return (
     <button
       onClick={onClick}
@@ -270,14 +312,14 @@ function SidebarBtn({ icon, label, active, badge, onClick }) {
       style={{
         position: 'relative',
         width: 44, height: 44, borderRadius: 10,
-        background: active ? C.teal + '18' : 'none',
-        border: `1px solid ${active ? C.teal + '55' : 'transparent'}`,
-        color: active ? C.teal : C.muted,
+        background: active ? color + '1a' : 'none',
+        border: `1px solid ${active ? color + '55' : 'transparent'}`,
+        color: active ? color : C.muted,
         cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         transition: 'all 0.15s',
       }}
-      onMouseEnter={e => { if (!active) { e.currentTarget.style.background = C.surface2; e.currentTarget.style.color = C.text } }}
+      onMouseEnter={e => { if (!active) { e.currentTarget.style.background = color + '12'; e.currentTarget.style.color = color } }}
       onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = C.muted } }}
     >
       {icon}
@@ -285,8 +327,8 @@ function SidebarBtn({ icon, label, active, badge, onClick }) {
         <span style={{
           position: 'absolute', top: 6, right: 6,
           width: 7, height: 7, borderRadius: '50%',
-          background: C.critical,
-          boxShadow: `0 0 4px ${C.critical}`,
+          background: color,
+          boxShadow: `0 0 4px ${color}`,
         }} />
       )}
     </button>

@@ -29,24 +29,28 @@ export default function Inventory({ items }) {
           primary={items.length}
           secondary={`${scored.length} scored`}
           accent={C.teal}
+          total={items.length}
         />
         <StatCard
           label="CRITICAL"
           primary={critical}
           secondary={`${warning} warning`}
           accent={C.critical}
+          total={items.length}
         />
         <StatCard
           label="EXPIRING TODAY"
           primary={expiring}
-          secondary={`RSL < 1 day`}
+          secondary="RSL < 1 day"
           accent={expiring > 0 ? C.warn : C.muted}
+          total={items.length}
         />
         <StatCard
           label="SAFE"
           primary={safe}
           secondary={`${items.length > 0 ? Math.round(safe / items.length * 100) : 0}% of inventory`}
           accent={C.safe}
+          total={items.length}
         />
       </div>
 
@@ -126,12 +130,18 @@ export default function Inventory({ items }) {
 
         {/* Rows */}
         {visible.length === 0 ? (
-          <div style={{ padding: '48px 0', textAlign: 'center', color: C.muted }}>
+          <div style={{ padding: '52px 0', textAlign: 'center', color: C.muted }}>
             <div style={{ fontSize: 32, marginBottom: 10 }}>🧊</div>
-            <div style={{ fontSize: 14, fontFamily: "'Syne', sans-serif" }}>
+            <div style={{ fontSize: 14, fontFamily: "'Syne', sans-serif", color: C.text }}>
               {filter === 'all' ? 'No items in the fridge yet.' : `No ${filter} items.`}
             </div>
-            <div style={{ fontSize: 12, marginTop: 6 }}>Click "+ Add Item" or "Scan Fridge" to get started.</div>
+            {filter === 'all' && (
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 20 }}>
+                <ActionBtn onClick={() => setShowReceipt(true)} secondary>Upload Receipt</ActionBtn>
+                <ActionBtn onClick={() => setShowScan(true)} outline>Scan Fridge</ActionBtn>
+                <ActionBtn onClick={() => setShowModal(true)} primary>+ Add Item</ActionBtn>
+              </div>
+            )}
           </div>
         ) : (
           visible.map(item => <ItemCard key={item.item_id} item={item} />)
@@ -145,7 +155,8 @@ export default function Inventory({ items }) {
   )
 }
 
-function StatCard({ label, primary, secondary, accent }) {
+function StatCard({ label, primary, secondary, accent, total }) {
+  const pct = total > 0 ? Math.min(100, Math.round((primary / total) * 100)) : (primary > 0 ? 100 : 0)
   return (
     <div style={{
       background: C.surface, border: `1px solid ${C.border}`,
@@ -161,9 +172,9 @@ function StatCard({ label, primary, secondary, accent }) {
       <div style={{ fontSize: 11, color: C.muted, fontFamily: "'Syne', sans-serif" }}>
         {secondary}
       </div>
-      {/* Accent bar */}
+      {/* Accent bar — width reflects actual proportion */}
       <div style={{ height: 2, background: accent + '33', borderRadius: 1, marginTop: 4 }}>
-        <div style={{ width: '40%', height: '100%', background: accent, borderRadius: 1 }} />
+        <div style={{ width: `${pct}%`, height: '100%', background: accent, borderRadius: 1, transition: 'width 0.4s ease' }} />
       </div>
     </div>
   )
