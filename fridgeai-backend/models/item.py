@@ -45,9 +45,13 @@ class ItemRead(BaseModel):
     P_spoil: Optional[float]
     RSL: Optional[float]
     fapf_score: Optional[float]
+    paif_action: Optional[str]
     confidence_tier: str
     updated_at: str
 
     @classmethod
     def from_row(cls, row) -> "ItemRead":
-        return cls(**dict(row))
+        d = dict(row)
+        d["P_spoil"] = d.pop("p_spoil", d.get("P_spoil"))
+        d["RSL"] = d.pop("rsl", d.get("RSL"))
+        return cls(**d)

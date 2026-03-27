@@ -110,9 +110,8 @@ async def test_critical_alert_fired(client, monkeypatch):
 
     # Backdate so ASLIE sees 10 days elapsed → P_spoil >> 0.80
     past = (datetime.now(tz=timezone.utc) - timedelta(days=10)).isoformat()
-    async with get_db() as db:
-        await db.execute("UPDATE items SET entry_time=? WHERE item_id=?", [past, item_id])
-        await db.commit()
+    async with get_db() as conn:
+        await conn.execute("UPDATE items SET entry_time=$1 WHERE item_id=$2", past, item_id)
 
     await run_for_item(item_id)
 

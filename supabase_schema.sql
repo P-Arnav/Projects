@@ -1,21 +1,38 @@
-from __future__ import annotations
-import contextlib
-import os
-import logging
+-- Run this once in your Supabase project: Dashboard > SQL Editor > New query
 
-import asyncpg
-from dotenv import load_dotenv
+-- 1. Households
+CREATE TABLE IF NOT EXISTS public.households (
+    household_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name         TEXT NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
-load_dotenv()
+-- 2. User preferences (keyed to Supabase Auth user id)
+CREATE TABLE IF NOT EXISTS public.user_prefs (
+    user_id               UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    household_id          UUID REFERENCES public.households(household_id) ON DELETE SET NULL,
+    auto_restock_enabled  BOOLEAN NOT NULL DEFAULT FALSE
+);
 
-logger = logging.getLogger(__name__)
+-- 3. Row Level Security
+--    The backend uses the service role key, which bypasses RLS automatically.
+--    These policies protect direct client access if you ever expose the anon key.
+ALTER TABLE public.households ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_prefs  ENABLE ROW LEVEL SECURITY;
 
-DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+DROP POLICY IF EXISTS "users_own_prefs_select" ON public.user_prefs;
+CREATE POLICY "users_own_prefs_select" ON public.user_prefs
+    FOR SELECT USING (auth.uid() = user_id);
 
-_pool: asyncpg.Pool | None = None
+DROP POLICY IF EXISTS "users_own_prefs_update" ON public.user_prefs;
+CREATE POLICY "users_own_prefs_update" ON public.user_prefs
+    FOR UPDATE USING (auth.uid() = user_id);
 
-CREATE_ITEMS = """
-CREATE TABLE IF NOT EXISTS items (
+-- 4. (Optional) Disable email confirmation for local dev so register works immediately
+--    Dashboard > Authentication > Settings > "Enable email confirmations" → OFF
+
+-- App tables
+CREATE TABLE IF NOT EXISTS public.items (
     item_id         TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
     category        TEXT NOT NULL,
@@ -32,11 +49,9 @@ CREATE TABLE IF NOT EXISTS items (
     paif_action     TEXT,
     confidence_tier TEXT NOT NULL DEFAULT 'LOW',
     updated_at      TEXT NOT NULL
-)
-"""
+);
 
-CREATE_ALERTS = """
-CREATE TABLE IF NOT EXISTS alerts (
+CREATE TABLE IF NOT EXISTS public.alerts (
     alert_id   TEXT PRIMARY KEY,
     item_id    TEXT NOT NULL,
     item_name  TEXT NOT NULL,
@@ -45,11 +60,9 @@ CREATE TABLE IF NOT EXISTS alerts (
     rsl        DOUBLE PRECISION,
     message    TEXT NOT NULL,
     created_at TEXT NOT NULL
-)
-"""
+);
 
-CREATE_FEEDBACK = """
-CREATE TABLE IF NOT EXISTS feedback (
+CREATE TABLE IF NOT EXISTS public.feedback (
     feedback_id         TEXT PRIMARY KEY,
     item_id             TEXT NOT NULL,
     category            TEXT NOT NULL,
@@ -57,11 +70,9 @@ CREATE TABLE IF NOT EXISTS feedback (
     shelf_life_actual   DOUBLE PRECISION NOT NULL,
     correction          DOUBLE PRECISION NOT NULL,
     created_at          TEXT NOT NULL
-)
-"""
+);
 
-CREATE_GROCERY = """
-CREATE TABLE IF NOT EXISTS grocery_items (
+CREATE TABLE IF NOT EXISTS public.grocery_items (
     grocery_id TEXT PRIMARY KEY,
     name       TEXT NOT NULL,
     category   TEXT NOT NULL DEFAULT 'vegetable',
@@ -69,11 +80,9 @@ CREATE TABLE IF NOT EXISTS grocery_items (
     checked    INTEGER NOT NULL DEFAULT 0,
     source     TEXT NOT NULL DEFAULT 'manual',
     created_at TEXT NOT NULL
-)
-"""
+);
 
-CREATE_CONSUMPTION_HISTORY = """
-CREATE TABLE IF NOT EXISTS consumption_history (
+CREATE TABLE IF NOT EXISTS public.consumption_history (
     id                  TEXT PRIMARY KEY,
     item_id             TEXT NOT NULL,
     item_name           TEXT NOT NULL,
@@ -82,40 +91,4 @@ CREATE TABLE IF NOT EXISTS consumption_history (
     reason              TEXT NOT NULL DEFAULT 'consumed',
     p_spoil_at_removal  DOUBLE PRECISION,
     consumed_at         TEXT NOT NULL
-)
-"""
-
-
-async def init_db() -> None:
-    global _pool
-    if not DATABASE_URL:
-        raise RuntimeError(
-            "DATABASE_URL is not set in .env — "
-            "get it from Supabase: Settings > Database > Connection string (Transaction pooler)"
-        )
-    _pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10, ssl="require", statement_cache_size=0)
-    logger.info("PostgreSQL pool created")
-    async with _pool.acquire() as conn:
-        await conn.execute(CREATE_ITEMS)
-        await conn.execute(CREATE_ALERTS)
-        await conn.execute(CREATE_FEEDBACK)
-        await conn.execute(CREATE_GROCERY)
-        await conn.execute(CREATE_CONSUMPTION_HISTORY)
-
-
-async def close_db() -> None:
-    global _pool
-    if _pool:
-        await _pool.close()
-        _pool = None
-
-
-@contextlib.asynccontextmanager
-async def get_db():
-    async with _pool.acquire() as conn:
-        yield conn
-
-
-async def db_dependency():
-    async with _pool.acquire() as conn:
-        yield conn
+);

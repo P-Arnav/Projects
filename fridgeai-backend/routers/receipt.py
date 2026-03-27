@@ -1,21 +1,40 @@
 from __future__ import annotations
+import asyncio
 import io
 import re
 import logging
 from typing import Optional
 
+import numpy as np
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from PIL import Image, ImageEnhance, ImageFilter
 from pydantic import BaseModel
+
+from routers.lookup import get_item_shelf_life, get_item_cost
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/receipt", tags=["receipt"])
 
 try:
     import pytesseract
-    _OCR_AVAILABLE = True
+    _TESSERACT_AVAILABLE = True
 except ImportError:
-    _OCR_AVAILABLE = False
+    _TESSERACT_AVAILABLE = False
+
+try:
+    import easyocr as _easyocr_lib
+    _EASYOCR_AVAILABLE = True
+except ImportError:
+    _EASYOCR_AVAILABLE = False
+
+_easyocr_reader = None
+
+
+def _get_easyocr_reader():
+    global _easyocr_reader
+    if _easyocr_reader is None:
+        _easyocr_reader = _easyocr_lib.Reader(['en'], gpu=False, verbose=False)
+    return _easyocr_reader
 
 # Keyword → category mapping for receipt parsing
 _CATEGORY_KEYWORDS: dict[str, list[str]] = {
@@ -33,11 +52,6 @@ _CATEGORY_KEYWORDS: dict[str, list[str]] = {
                   "cereal", "oat", "flour", "sugar", "salt", "oil", "vinegar"],
     "protein":   ["egg", "tofu", "dal", "lentil", "almond", "walnut", "peanut", "nut", "seed",
                   "chickpea", "kidney bean"],
-}
-
-_DEFAULT_SHELF: dict[str, int] = {
-    "dairy": 7, "meat": 3, "fish": 2, "vegetable": 6,
-    "fruit": 7, "beverage": 7, "cooked": 4, "protein": 7,
 }
 
 _SKIP_WORDS = {
@@ -60,6 +74,7 @@ class ReceiptScanResult(BaseModel):
     items: list[ParsedItem]
     raw_text: str
     ocr_available: bool
+    ocr_engine: str  # "tesseract" | "easyocr" | "none"
 
 
 def _categorize(name: str) -> str:
@@ -117,8 +132,8 @@ def _parse_receipt_text(text: str) -> list[ParsedItem]:
             name=name.title(),
             category=cat,
             quantity=1,
-            shelf_life=_DEFAULT_SHELF[cat],
-            price=price,
+            shelf_life=get_item_shelf_life(name, cat),
+            price=price if price is not None else get_item_cost(name) or None,
         ))
 
     return items
@@ -126,13 +141,13 @@ def _parse_receipt_text(text: str) -> list[ParsedItem]:
 
 @router.post("/scan", response_model=ReceiptScanResult)
 async def scan_receipt(file: UploadFile = File(...)):
-    if not _OCR_AVAILABLE:
+    if not _TESSERACT_AVAILABLE and not _EASYOCR_AVAILABLE:
         raise HTTPException(
             status_code=503,
             detail=(
-                "OCR unavailable. Install Tesseract binary from "
-                "https://github.com/UB-Mannheim/tesseract/wiki "
-                "then run: pip install pytesseract"
+                "No OCR engine available. Either install Tesseract "
+                "(https://github.com/UB-Mannheim/tesseract/wiki) + pip install pytesseract, "
+                "or run: pip install easyocr"
             ),
         )
 
@@ -147,10 +162,33 @@ async def scan_receipt(file: UploadFile = File(...)):
     enhanced = ImageEnhance.Contrast(grey).enhance(2.0)
     sharpened = enhanced.filter(ImageFilter.SHARPEN)
 
-    try:
-        text = pytesseract.image_to_string(sharpened, config="--psm 6")
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"OCR failed: {exc}")
+    text = ""
+    engine_used = "none"
+
+    loop = asyncio.get_event_loop()
+
+    if _TESSERACT_AVAILABLE:
+        try:
+            _img = sharpened
+            text = await loop.run_in_executor(
+                None, lambda: pytesseract.image_to_string(_img, config="--psm 6")
+            )
+            engine_used = "tesseract"
+        except Exception as exc:
+            logger.warning("Tesseract failed, falling back to easyocr: %s", exc)
+
+    if not text.strip() and _EASYOCR_AVAILABLE:
+        try:
+            reader = _get_easyocr_reader()
+            _arr = np.array(sharpened)
+            results = await loop.run_in_executor(None, lambda: reader.readtext(_arr))
+            text = "\n".join(r[1] for r in results)
+            engine_used = "easyocr"
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"OCR failed: {exc}")
+
+    if not text.strip():
+        raise HTTPException(status_code=422, detail="OCR produced no output — try a clearer image")
 
     items = _parse_receipt_text(text)
-    return ReceiptScanResult(items=items, raw_text=text, ocr_available=True)
+    return ReceiptScanResult(items=items, raw_text=text, ocr_available=True, ocr_engine=engine_used)

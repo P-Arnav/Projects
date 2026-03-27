@@ -4,11 +4,18 @@ from typing import Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
-import aiosqlite
+import asyncpg
 from pydantic import BaseModel
 
 from core.database import db_dependency
+from models.item import ItemRead
+from services import settle_timer
 from websocket.manager import manager
+
+_SHELF_LIFE_DEFAULTS: dict[str, int] = {
+    "dairy": 7, "protein": 7, "meat": 3, "vegetable": 6,
+    "fruit": 7, "fish": 2, "cooked": 4, "beverage": 7,
+}
 
 router = APIRouter(prefix="/grocery", tags=["grocery"])
 
@@ -48,29 +55,26 @@ class GroceryItemUpdate(BaseModel):
 
 
 @router.get("", response_model=list[GroceryItemRead])
-async def list_grocery(db: aiosqlite.Connection = Depends(db_dependency)):
-    cur = await db.execute("SELECT * FROM grocery_items ORDER BY created_at DESC")
-    rows = await cur.fetchall()
+async def list_grocery(conn: asyncpg.Connection = Depends(db_dependency)):
+    rows = await conn.fetch("SELECT * FROM grocery_items ORDER BY created_at DESC")
     return [GroceryItemRead.from_row(r) for r in rows]
 
 
 @router.post("", response_model=GroceryItemRead, status_code=status.HTTP_201_CREATED)
 async def add_grocery(
     body: GroceryItemCreate,
-    db: aiosqlite.Connection = Depends(db_dependency),
+    conn: asyncpg.Connection = Depends(db_dependency),
 ):
     grocery_id = str(uuid4())
     now = datetime.now(tz=timezone.utc).isoformat()
 
-    await db.execute(
+    await conn.execute(
         "INSERT INTO grocery_items (grocery_id, name, category, quantity, checked, source, created_at) "
-        "VALUES (?, ?, ?, ?, 0, ?, ?)",
-        [grocery_id, body.name, body.category, body.quantity, body.source, now],
+        "VALUES ($1, $2, $3, $4, 0, $5, $6)",
+        grocery_id, body.name, body.category, body.quantity, body.source, now,
     )
-    await db.commit()
 
-    cur = await db.execute("SELECT * FROM grocery_items WHERE grocery_id = ?", [grocery_id])
-    row = await cur.fetchone()
+    row = await conn.fetchrow("SELECT * FROM grocery_items WHERE grocery_id = $1", grocery_id)
     item = GroceryItemRead.from_row(row)
 
     await manager.broadcast({
@@ -85,23 +89,25 @@ async def add_grocery(
 async def update_grocery(
     grocery_id: str,
     body: GroceryItemUpdate,
-    db: aiosqlite.Connection = Depends(db_dependency),
+    conn: asyncpg.Connection = Depends(db_dependency),
 ):
-    cur = await db.execute("SELECT * FROM grocery_items WHERE grocery_id = ?", [grocery_id])
-    if await cur.fetchone() is None:
+    existing = await conn.fetchrow("SELECT grocery_id FROM grocery_items WHERE grocery_id = $1", grocery_id)
+    if existing is None:
         raise HTTPException(status_code=404, detail="Grocery item not found")
 
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
 
-    set_clause = ", ".join(f"{k} = ?" for k in updates)
-    values = list(updates.values()) + [grocery_id]
-    await db.execute(f"UPDATE grocery_items SET {set_clause} WHERE grocery_id = ?", values)
-    await db.commit()
+    keys = list(updates.keys())
+    vals = list(updates.values())
+    set_clause = ", ".join(f"{k} = ${i+1}" for i, k in enumerate(keys))
+    await conn.execute(
+        f"UPDATE grocery_items SET {set_clause} WHERE grocery_id = ${len(keys)+1}",
+        *vals, grocery_id,
+    )
 
-    cur = await db.execute("SELECT * FROM grocery_items WHERE grocery_id = ?", [grocery_id])
-    row = await cur.fetchone()
+    row = await conn.fetchrow("SELECT * FROM grocery_items WHERE grocery_id = $1", grocery_id)
     item = GroceryItemRead.from_row(row)
 
     now = datetime.now(tz=timezone.utc).isoformat()
@@ -113,12 +119,62 @@ async def update_grocery(
     return item
 
 
+@router.post("/{grocery_id}/add-to-fridge", response_model=ItemRead)
+async def add_to_fridge(
+    grocery_id: str,
+    conn: asyncpg.Connection = Depends(db_dependency),
+):
+    """Promote a grocery list item into the fridge inventory and mark it as checked."""
+    row = await conn.fetchrow("SELECT * FROM grocery_items WHERE grocery_id = $1", grocery_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Grocery item not found")
+
+    item_id = str(uuid4())
+    now = datetime.now(tz=timezone.utc).isoformat()
+    shelf_life = _SHELF_LIFE_DEFAULTS.get(row["category"], 7)
+
+    await conn.execute(
+        """INSERT INTO items
+           (item_id, name, category, quantity, entry_time, shelf_life,
+            location, estimated_cost, storage_temp, humidity,
+            confidence_tier, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,'',0.0,4.0,50.0,'LOW',$7)""",
+        item_id, row["name"], row["category"], row["quantity"],
+        now, shelf_life, now,
+    )
+
+    # Mark grocery item as checked
+    await conn.execute(
+        "UPDATE grocery_items SET checked = 1 WHERE grocery_id = $1", grocery_id
+    )
+
+    item_row = await conn.fetchrow("SELECT * FROM items WHERE item_id = $1", item_id)
+    item = ItemRead.from_row(item_row)
+
+    settle_timer.schedule(item_id)
+
+    await manager.broadcast({
+        "event": "ITEM_INSERTED",
+        "timestamp": now,
+        "data": item.model_dump(),
+    })
+
+    # Broadcast updated grocery item
+    updated_grocery = await conn.fetchrow("SELECT * FROM grocery_items WHERE grocery_id = $1", grocery_id)
+    await manager.broadcast({
+        "event": "GROCERY_UPDATED",
+        "timestamp": now,
+        "data": GroceryItemRead.from_row(updated_grocery).model_dump(),
+    })
+
+    return item
+
+
 # Must be defined BEFORE /{grocery_id} to avoid path conflict
 @router.delete("/checked", status_code=status.HTTP_204_NO_CONTENT)
-async def clear_checked(db: aiosqlite.Connection = Depends(db_dependency)):
+async def clear_checked(conn: asyncpg.Connection = Depends(db_dependency)):
     """Delete all checked grocery items."""
-    await db.execute("DELETE FROM grocery_items WHERE checked = 1")
-    await db.commit()
+    await conn.execute("DELETE FROM grocery_items WHERE checked = 1")
     now = datetime.now(tz=timezone.utc).isoformat()
     await manager.broadcast({
         "event": "GROCERY_UPDATED",
@@ -130,14 +186,13 @@ async def clear_checked(db: aiosqlite.Connection = Depends(db_dependency)):
 @router.delete("/{grocery_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_grocery(
     grocery_id: str,
-    db: aiosqlite.Connection = Depends(db_dependency),
+    conn: asyncpg.Connection = Depends(db_dependency),
 ):
-    cur = await db.execute("SELECT grocery_id FROM grocery_items WHERE grocery_id = ?", [grocery_id])
-    if await cur.fetchone() is None:
+    existing = await conn.fetchrow("SELECT grocery_id FROM grocery_items WHERE grocery_id = $1", grocery_id)
+    if existing is None:
         raise HTTPException(status_code=404, detail="Grocery item not found")
 
-    await db.execute("DELETE FROM grocery_items WHERE grocery_id = ?", [grocery_id])
-    await db.commit()
+    await conn.execute("DELETE FROM grocery_items WHERE grocery_id = $1", grocery_id)
 
     now = datetime.now(tz=timezone.utc).isoformat()
     await manager.broadcast({

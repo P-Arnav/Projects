@@ -57,9 +57,8 @@ async def recover_on_startup() -> None:
     SETTLE_DELAY_SECONDS seconds that have not been scored yet (P_spoil IS NULL).
     """
     now_utc = datetime.now(tz=timezone.utc)
-    async with get_db() as db:
-        cur = await db.execute("SELECT item_id, entry_time FROM items WHERE P_spoil IS NULL")
-        rows = await cur.fetchall()
+    async with get_db() as conn:
+        rows = await conn.fetch("SELECT item_id, entry_time FROM items WHERE p_spoil IS NULL")
 
     for row in rows:
         entry_time = datetime.fromisoformat(row["entry_time"]).replace(tzinfo=timezone.utc)

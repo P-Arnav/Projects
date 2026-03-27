@@ -6,7 +6,6 @@ export default function Recipes({ items }) {
   const [recipes, setRecipes] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [expanded, setExpanded] = useState(null)
   const [cooking, setCooking] = useState(null)
   const [cooked, setCooked] = useState(new Set())
 
@@ -27,10 +26,10 @@ export default function Recipes({ items }) {
 
   const handleCook = async (recipe) => {
     setCooking(recipe.meal_id)
-    // Match pantry items to this recipe's ingredient list
+    // Match pantry items to this recipe's used ingredients
     const matchingIds = items
       .filter(item =>
-        recipe.ingredients.some(ing => ing.toLowerCase().includes(item.name.toLowerCase()))
+        recipe.used_ingredients.some(ing => ing.toLowerCase().includes(item.name.toLowerCase()))
       )
       .map(i => i.item_id)
 
@@ -58,7 +57,7 @@ export default function Recipes({ items }) {
       </div>
 
       <div style={{ fontSize: 13, color: C.muted, marginBottom: 20 }}>
-        Recipes suggested based on items currently in your pantry, via TheMealDB.
+        Recipes suggested based on items currently in your pantry, via Spoonacular.
       </div>
 
       {loading && (
@@ -87,8 +86,6 @@ export default function Recipes({ items }) {
           <RecipeCard
             key={recipe.meal_id}
             recipe={recipe}
-            expanded={expanded === recipe.meal_id}
-            onToggle={() => setExpanded(expanded === recipe.meal_id ? null : recipe.meal_id)}
             onCook={() => handleCook(recipe)}
             cooking={cooking === recipe.meal_id}
             cooked={cooked.has(recipe.meal_id)}
@@ -99,7 +96,7 @@ export default function Recipes({ items }) {
   )
 }
 
-function RecipeCard({ recipe, expanded, onToggle, onCook, cooking, cooked }) {
+function RecipeCard({ recipe, onCook, cooking, cooked }) {
   return (
     <div style={{
       background: C.surface, border: `1px solid ${cooked ? C.safe : C.border}`,
@@ -113,57 +110,50 @@ function RecipeCard({ recipe, expanded, onToggle, onCook, cooking, cooked }) {
         />
       )}
       <div style={{ padding: '16px' }}>
-        <div style={{ fontWeight: 700, color: C.text, fontSize: 15, marginBottom: 8 }}>
+        <div style={{ fontWeight: 700, color: C.text, fontSize: 15, marginBottom: 12 }}>
           {recipe.name}
         </div>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-          {recipe.category && <Badge color={C.blue}>{recipe.category}</Badge>}
-          {recipe.area && <Badge color={C.muted}>{recipe.area}</Badge>}
-        </div>
 
-        <button onClick={onToggle} style={{
-          background: 'none', border: 'none', color: C.teal,
-          cursor: 'pointer', fontSize: 12, padding: 0,
-          fontFamily: "'Syne', sans-serif", marginBottom: expanded ? 12 : 0,
-        }}>
-          {expanded ? 'Hide details ▲' : 'Show details ▼'}
-        </button>
+        {recipe.used_ingredients.length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 10, color: C.safe, fontWeight: 700, letterSpacing: '0.06em', marginBottom: 5 }}>
+              IN YOUR FRIDGE
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {recipe.used_ingredients.map((ing, i) => (
+                <span key={i} style={{
+                  background: C.safe + '18', color: C.safe,
+                  borderRadius: 4, padding: '2px 8px', fontSize: 11,
+                  border: `1px solid ${C.safe}33`,
+                }}>
+                  {ing}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
-        {expanded && (
-          <div>
-            {recipe.ingredients.length > 0 && (
-              <>
-                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 6, letterSpacing: '0.06em' }}>
-                  INGREDIENTS
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12 }}>
-                  {recipe.ingredients.map((ing, i) => (
-                    <span key={i} style={{
-                      background: C.surface2, color: C.text,
-                      borderRadius: 4, padding: '2px 8px', fontSize: 11,
-                      border: `1px solid ${C.border}`,
-                    }}>
-                      {ing}
-                    </span>
-                  ))}
-                </div>
-              </>
-            )}
-            {recipe.instructions && (
-              <>
-                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 6, letterSpacing: '0.06em' }}>
-                  INSTRUCTIONS (preview)
-                </div>
-                <div style={{ fontSize: 12, color: C.text, lineHeight: 1.65, opacity: 0.8 }}>
-                  {recipe.instructions}…
-                </div>
-              </>
-            )}
+        {recipe.missed_ingredients.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 10, color: C.warn, fontWeight: 700, letterSpacing: '0.06em', marginBottom: 5 }}>
+              STILL NEED
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {recipe.missed_ingredients.map((ing, i) => (
+                <span key={i} style={{
+                  background: C.warn + '18', color: C.warn,
+                  borderRadius: 4, padding: '2px 8px', fontSize: 11,
+                  border: `1px solid ${C.warn}33`,
+                }}>
+                  {ing}
+                </span>
+              ))}
+            </div>
           </div>
         )}
 
         <button onClick={onCook} disabled={cooking || cooked} style={{
-          marginTop: 14, width: '100%',
+          marginTop: 4, width: '100%',
           background: cooked ? C.safe + '22' : cooking ? C.surface2 : C.teal + '18',
           border: `1px solid ${cooked ? C.safe : C.teal}`,
           color: cooked ? C.safe : C.teal,
@@ -175,17 +165,5 @@ function RecipeCard({ recipe, expanded, onToggle, onCook, cooking, cooked }) {
         </button>
       </div>
     </div>
-  )
-}
-
-function Badge({ children, color }) {
-  return (
-    <span style={{
-      background: color + '22', color,
-      borderRadius: 4, padding: '2px 8px',
-      fontSize: 10, fontWeight: 600, letterSpacing: '0.04em',
-    }}>
-      {children}
-    </span>
   )
 }

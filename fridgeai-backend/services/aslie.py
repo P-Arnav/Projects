@@ -65,9 +65,13 @@ def rsl(
     """
     Remaining shelf life in days.
 
-    Uses a 32-iteration binary search to find t* where P_spoil >= THETA,
-    then caps the result at the item's declared shelf_life so that
-    category-specific expiry rules are always respected.
+    Three-way minimum:
+    1. formula_rsl    — binary-search time until P_spoil >= THETA
+    2. official_rsl   — declared shelf_life minus elapsed time
+    3. spoil_weighted — shelf_life × (1 − P_spoil_now / THETA)
+                        so that a non-zero current P_spoil immediately
+                        reduces RSL proportionally (e.g. 10% spoilage on
+                        a 7-day item → ~6.1d remaining instead of 7.0d).
     """
     lo = t_elapsed
     hi = t_elapsed + shelf_life * 3  # safety ceiling for binary search
@@ -83,7 +87,12 @@ def rsl(
 
     # Hard cap: never exceed what the declared shelf_life allows
     official_rsl = max(0.0, float(shelf_life) - t_elapsed)
-    return min(formula_rsl, official_rsl)
+
+    # P_spoil-weighted cap: proportional reduction based on current spoilage
+    ps_now = _sigmoid(_log_odds(t_elapsed, temp, category_enc, humidity))
+    spoil_weighted = float(shelf_life) * max(0.0, 1.0 - ps_now / THETA)
+
+    return min(formula_rsl, official_rsl, spoil_weighted)
 
 
 def compute(

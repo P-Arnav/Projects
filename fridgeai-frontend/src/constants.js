@@ -1,16 +1,17 @@
 export const C = {
-  bg:       '#070d1a',
-  surface:  '#0c1628',
-  surface2: '#101e33',
-  border:   '#1a2e4a',
-  border2:  '#243d5c',
+  bg:       '#09090e',
+  surface:  '#0f0f17',
+  surface2: '#141420',
+  border:   '#1c1c2a',
+  border2:  '#242436',
+  orange:   '#f97316',
   teal:     '#00d4aa',
-  blue:     '#3b9eff',
-  text:     '#e8f0fe',
-  muted:    '#4a6080',
-  critical: '#ff4d6d',
-  warn:     '#fbbf24',
-  safe:     '#34d399',
+  blue:     '#6366f1',
+  text:     '#eeeef5',
+  muted:    '#484868',
+  critical: '#ef4444',
+  warn:     '#f59e0b',
+  safe:     '#22c55e',
 }
 
 export const riskColor = (p) =>
@@ -22,6 +23,17 @@ export const riskLabel = (p) =>
 export const CATEGORIES = [
   'dairy', 'protein', 'meat', 'vegetable', 'fruit', 'fish', 'cooked', 'beverage',
 ]
+
+export const CAT_COLOR = {
+  dairy:     '#6366f1',
+  protein:   '#f97316',
+  meat:      '#ef4444',
+  vegetable: '#22c55e',
+  fruit:     '#f59e0b',
+  fish:      '#3b82f6',
+  cooked:    '#a855f7',
+  beverage:  '#00d4aa',
+}
 
 export const ALERT_COLOR = {
   CRITICAL_ALERT:  C.critical,

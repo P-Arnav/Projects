@@ -32,6 +32,10 @@ export default function GroceryList({ groceryItems, dispatch }) {
     await api.clearCheckedGrocery()
   }
 
+  const handleAddToFridge = async (grocery_id) => {
+    await api.addGroceryToFridge(grocery_id)
+  }
+
   const unchecked = groceryItems.filter(i => !i.checked)
   const checked = groceryItems.filter(i => i.checked)
 
@@ -77,7 +81,7 @@ export default function GroceryList({ groceryItems, dispatch }) {
       ) : (
         <>
           {unchecked.map(item => (
-            <GroceryRow key={item.grocery_id} item={item} onToggle={handleToggle} onDelete={handleDelete} />
+            <GroceryRow key={item.grocery_id} item={item} onToggle={handleToggle} onDelete={handleDelete} onAddToFridge={handleAddToFridge} />
           ))}
 
           {checked.length > 0 && (
@@ -94,7 +98,7 @@ export default function GroceryList({ groceryItems, dispatch }) {
                 </button>
               </div>
               {checked.map(item => (
-                <GroceryRow key={item.grocery_id} item={item} onToggle={handleToggle} onDelete={handleDelete} />
+                <GroceryRow key={item.grocery_id} item={item} onToggle={handleToggle} onDelete={handleDelete} onAddToFridge={handleAddToFridge} />
               ))}
             </>
           )}
@@ -104,7 +108,7 @@ export default function GroceryList({ groceryItems, dispatch }) {
   )
 }
 
-function GroceryRow({ item, onToggle, onDelete }) {
+function GroceryRow({ item, onToggle, onDelete, onAddToFridge }) {
   const sourceColor = item.source === 'restock' ? C.warn : item.source === 'recipe' ? C.blue : C.muted
   return (
     <div style={{
@@ -138,6 +142,20 @@ function GroceryRow({ item, onToggle, onDelete }) {
         {item.source.toUpperCase()}
       </span>
       <span style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>{item.category}</span>
+      {!item.checked && (
+        <button
+          onClick={() => onAddToFridge(item.grocery_id)}
+          title="Add to fridge inventory"
+          style={{
+            background: C.teal + '18', border: `1px solid ${C.teal}55`,
+            color: C.teal, borderRadius: 6, padding: '3px 10px',
+            cursor: 'pointer', fontSize: 11, fontWeight: 700,
+            fontFamily: "'Syne', sans-serif", flexShrink: 0, whiteSpace: 'nowrap',
+          }}
+        >
+          → Fridge
+        </button>
+      )}
       <button
         onClick={() => onDelete(item.grocery_id)}
         style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 18, padding: '0 2px', lineHeight: 1, flexShrink: 0 }}

@@ -13,8 +13,10 @@ export default defineConfig({
       '/grocery': 'http://localhost:8000',
       '/restock': 'http://localhost:8000',
       '/recipes': 'http://localhost:8000',
-      '/receipt': 'http://localhost:8000',
-      '/ws':      { target: 'ws://localhost:8000', ws: true, rewriteWsOrigin: true },
+      '/receipt':   'http://localhost:8000',
+      '/auth':      'http://localhost:8000',
+      '/analytics': 'http://localhost:8000',
+      '/ws':        { target: 'ws://localhost:8000', ws: true, rewriteWsOrigin: true },
     }
   }
 })

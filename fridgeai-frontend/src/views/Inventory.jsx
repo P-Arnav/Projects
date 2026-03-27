@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { C, CATEGORIES } from '../constants.js'
+import { C, CATEGORIES, CAT_COLOR, riskColor } from '../constants.js'
 import ItemCard from '../components/ItemCard.jsx'
 import AddItemModal from '../components/AddItemModal.jsx'
 import ScanModal from '../components/ScanModal.jsx'
@@ -11,57 +11,132 @@ export default function Inventory({ items }) {
   const [showScan, setShowScan] = useState(false)
   const [showReceipt, setShowReceipt] = useState(false)
 
+  const scored = items.filter(i => i.P_spoil != null)
+  const critical = items.filter(i => i.P_spoil > 0.80).length
+  const warning  = items.filter(i => i.P_spoil > 0.50 && i.P_spoil <= 0.80).length
+  const safe     = items.filter(i => i.P_spoil != null && i.P_spoil <= 0.50).length
+  const expiring = items.filter(i => i.RSL != null && i.RSL < 1).length
+
   const visible = filter === 'all' ? items : items.filter(i => i.category === filter)
 
   return (
-    <div>
-      {/* Toolbar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Pill label="All" active={filter === 'all'} onClick={() => setFilter('all')} count={items.length} />
-          {CATEGORIES.map(cat => {
-            const n = items.filter(i => i.category === cat).length
-            if (n === 0) return null
-            return <Pill key={cat} label={cat} active={filter === cat} onClick={() => setFilter(cat)} count={n} />
-          })}
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setShowReceipt(true)} style={{
-            background: 'none', color: C.muted, border: `1px solid ${C.border2}`, borderRadius: 8,
-            padding: '9px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13,
-            fontFamily: "'Syne', sans-serif",
-          }}>
-            Upload Receipt
-          </button>
-          <button onClick={() => setShowScan(true)} style={{
-            background: 'none', color: C.teal, border: `1px solid ${C.teal}`, borderRadius: 8,
-            padding: '9px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13,
-            fontFamily: "'Syne', sans-serif",
-          }}>
-            Scan Fridge
-          </button>
-          <button onClick={() => setShowModal(true)} style={{
-            background: C.teal, color: C.bg, border: 'none', borderRadius: 8,
-            padding: '9px 18px', fontWeight: 700, cursor: 'pointer', fontSize: 13,
-            fontFamily: "'Syne', sans-serif",
-          }}>
-            + Add Item
-          </button>
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* ── Stat cards ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+        <StatCard
+          label="TOTAL ITEMS"
+          primary={items.length}
+          secondary={`${scored.length} scored`}
+          accent={C.teal}
+        />
+        <StatCard
+          label="CRITICAL"
+          primary={critical}
+          secondary={`${warning} warning`}
+          accent={C.critical}
+        />
+        <StatCard
+          label="EXPIRING TODAY"
+          primary={expiring}
+          secondary={`RSL < 1 day`}
+          accent={expiring > 0 ? C.warn : C.muted}
+        />
+        <StatCard
+          label="SAFE"
+          primary={safe}
+          secondary={`${items.length > 0 ? Math.round(safe / items.length * 100) : 0}% of inventory`}
+          accent={C.safe}
+        />
       </div>
 
-      {/* Grid */}
-      {visible.length === 0 ? (
-        <Empty filter={filter} />
-      ) : (
+      {/* ── Category dot strip ── */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {CATEGORIES.map(cat => {
+          const n = items.filter(i => i.category === cat).length
+          if (n === 0) return null
+          const color = CAT_COLOR[cat] || C.muted
+          return (
+            <button key={cat} onClick={() => setFilter(filter === cat ? 'all' : cat)} style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              background: filter === cat ? color + '18' : 'none',
+              border: `1px solid ${filter === cat ? color + '66' : C.border}`,
+              borderRadius: 20, padding: '5px 12px', cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, display: 'inline-block' }} />
+              <span style={{ fontSize: 12, color: filter === cat ? color : C.muted, fontFamily: "'Syne', sans-serif", fontWeight: filter === cat ? 600 : 400 }}>
+                {cat}
+              </span>
+              <span style={{ fontSize: 10, color: filter === cat ? color + 'cc' : C.muted + '88', fontFamily: "'JetBrains Mono', monospace" }}>
+                {n}
+              </span>
+            </button>
+          )
+        })}
+        {filter !== 'all' && (
+          <button onClick={() => setFilter('all')} style={{
+            fontSize: 11, color: C.muted, background: 'none',
+            border: `1px solid ${C.border}`, borderRadius: 20,
+            padding: '5px 12px', cursor: 'pointer', fontFamily: "'Syne', sans-serif",
+          }}>
+            Show all
+          </button>
+        )}
+      </div>
+
+      {/* ── Item list panel ── */}
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden' }}>
+        {/* Panel header */}
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-          gap: 14,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 18px', borderBottom: `1px solid ${C.border}`,
+          background: C.surface2,
         }}>
-          {visible.map(item => <ItemCard key={item.item_id} item={item} />)}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Syne', sans-serif" }}>
+              Items Online
+            </span>
+            <span style={{
+              fontSize: 10, color: C.teal, background: C.teal + '18',
+              borderRadius: 10, padding: '1px 8px', fontFamily: "'JetBrains Mono', monospace", fontWeight: 700,
+            }}>{visible.length}</span>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <ActionBtn onClick={() => setShowReceipt(true)} secondary>Upload Receipt</ActionBtn>
+            <ActionBtn onClick={() => setShowScan(true)} outline>Scan Fridge</ActionBtn>
+            <ActionBtn onClick={() => setShowModal(true)} primary>+ Add Item</ActionBtn>
+          </div>
         </div>
-      )}
+
+        {/* Column headers */}
+        {visible.length > 0 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 14,
+            padding: '6px 18px', borderBottom: `1px solid ${C.border}`,
+          }}>
+            <div style={{ width: 8, flexShrink: 0 }} />
+            <div style={{ flex: '0 0 150px', fontSize: 10, color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: "'Syne', sans-serif" }}>Name</div>
+            <div style={{ flex: '0 0 110px', fontSize: 10, color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: "'Syne', sans-serif" }}>Action</div>
+            <div style={{ flex: 1, fontSize: 10, color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: "'Syne', sans-serif" }}>RSL</div>
+            <div style={{ width: 40, fontSize: 10, color: C.muted, letterSpacing: '0.08em', textTransform: 'uppercase', textAlign: 'right', fontFamily: "'Syne', sans-serif" }}>Spoil</div>
+            <div style={{ width: 56, flexShrink: 0 }} />
+          </div>
+        )}
+
+        {/* Rows */}
+        {visible.length === 0 ? (
+          <div style={{ padding: '48px 0', textAlign: 'center', color: C.muted }}>
+            <div style={{ fontSize: 32, marginBottom: 10 }}>🧊</div>
+            <div style={{ fontSize: 14, fontFamily: "'Syne', sans-serif" }}>
+              {filter === 'all' ? 'No items in the fridge yet.' : `No ${filter} items.`}
+            </div>
+            <div style={{ fontSize: 12, marginTop: 6 }}>Click "+ Add Item" or "Scan Fridge" to get started.</div>
+          </div>
+        ) : (
+          visible.map(item => <ItemCard key={item.item_id} item={item} />)
+        )}
+      </div>
 
       {showModal   && <AddItemModal   onClose={() => setShowModal(false)} />}
       {showScan    && <ScanModal      onClose={() => setShowScan(false)} />}
@@ -70,34 +145,41 @@ export default function Inventory({ items }) {
   )
 }
 
-function Pill({ label, active, onClick, count }) {
+function StatCard({ label, primary, secondary, accent }) {
   return (
-    <button onClick={onClick} style={{
-      background: active ? C.teal + '22' : 'none',
-      border: `1px solid ${active ? C.teal : C.border2}`,
-      color: active ? C.teal : C.muted,
-      borderRadius: 20, padding: '5px 13px', cursor: 'pointer', fontSize: 12,
-      fontFamily: "'Syne', sans-serif", fontWeight: active ? 600 : 400,
-      display: 'flex', alignItems: 'center', gap: 6,
+    <div style={{
+      background: C.surface, border: `1px solid ${C.border}`,
+      borderRadius: 12, padding: '18px 20px',
+      display: 'flex', flexDirection: 'column', gap: 6,
     }}>
-      {label}
-      <span style={{
-        background: active ? C.teal + '33' : C.surface2,
-        color: active ? C.teal : C.muted,
-        borderRadius: 10, padding: '0 6px', fontSize: 10, fontWeight: 700,
-      }}>{count}</span>
-    </button>
+      <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Syne', sans-serif" }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 32, fontWeight: 800, color: accent, fontFamily: "'Syne', sans-serif", lineHeight: 1 }}>
+        {primary}
+      </div>
+      <div style={{ fontSize: 11, color: C.muted, fontFamily: "'Syne', sans-serif" }}>
+        {secondary}
+      </div>
+      {/* Accent bar */}
+      <div style={{ height: 2, background: accent + '33', borderRadius: 1, marginTop: 4 }}>
+        <div style={{ width: '40%', height: '100%', background: accent, borderRadius: 1 }} />
+      </div>
+    </div>
   )
 }
 
-function Empty({ filter }) {
+function ActionBtn({ onClick, children, primary, outline, secondary }) {
+  const bg = primary ? C.teal : 'none'
+  const color = primary ? C.bg : outline ? C.teal : C.muted
+  const border = primary ? 'none' : `1px solid ${outline ? C.teal + '88' : C.border2}`
   return (
-    <div style={{ textAlign: 'center', color: C.muted, padding: '60px 0' }}>
-      <div style={{ fontSize: 40, marginBottom: 12 }}>🧊</div>
-      <div style={{ fontSize: 15 }}>
-        {filter === 'all' ? 'No items in the fridge yet.' : `No ${filter} items.`}
-      </div>
-      <div style={{ fontSize: 13, marginTop: 6 }}>Click "+ Add Item" to get started.</div>
-    </div>
+    <button onClick={onClick} style={{
+      background: bg, color, border, borderRadius: 7,
+      padding: '7px 14px', cursor: 'pointer', fontSize: 12,
+      fontFamily: "'Syne', sans-serif", fontWeight: 600,
+    }}>
+      {children}
+    </button>
   )
 }

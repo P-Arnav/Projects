@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-import aiosqlite
+import asyncpg
 
 from core.database import db_dependency
 from websocket.manager import manager
@@ -9,10 +9,8 @@ router = APIRouter(prefix="/status", tags=["status"])
 
 
 @router.get("")
-async def get_status(db: aiosqlite.Connection = Depends(db_dependency)):
-    cur = await db.execute("SELECT COUNT(*) FROM items")
-    row = await cur.fetchone()
-    item_count = row[0]
+async def get_status(conn: asyncpg.Connection = Depends(db_dependency)):
+    item_count = await conn.fetchval("SELECT COUNT(*) FROM items")
 
     return {
         "status": "ok",

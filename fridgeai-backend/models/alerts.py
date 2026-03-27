@@ -22,4 +22,7 @@ class AlertRead(BaseModel):
 
     @classmethod
     def from_row(cls, row) -> "AlertRead":
-        return cls(**dict(row))
+        d = dict(row)
+        d["P_spoil"] = d.pop("p_spoil", d.get("P_spoil"))
+        d["RSL"] = d.pop("rsl", d.get("RSL"))
+        return cls(**d)

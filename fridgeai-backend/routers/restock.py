@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends
-import aiosqlite
+import asyncpg
 from pydantic import BaseModel
 
 from core.database import db_dependency
@@ -21,16 +21,15 @@ class RestockSuggestion(BaseModel):
 
 
 @router.get("", response_model=list[RestockSuggestion])
-async def get_restock_suggestions(db: aiosqlite.Connection = Depends(db_dependency)):
+async def get_restock_suggestions(conn: asyncpg.Connection = Depends(db_dependency)):
     """
     Suggest items to restock based on current pantry state:
     - Urgent: RSL < 2 days and P_spoil > 0.5 (will go bad before you can restock)
     - Low stock: quantity == 1 and P_spoil > 0.4 (running out while spoiling)
     """
-    cur = await db.execute(
-        "SELECT name, category, quantity, RSL, P_spoil FROM items"
+    rows = await conn.fetch(
+        "SELECT name, category, quantity, rsl, p_spoil FROM items"
     )
-    rows = await cur.fetchall()
 
     suggestions: list[RestockSuggestion] = []
     seen: set[str] = set()
@@ -39,8 +38,8 @@ async def get_restock_suggestions(db: aiosqlite.Connection = Depends(db_dependen
         name = row["name"]
         category = row["category"]
         qty = row["quantity"]
-        rsl = row["RSL"]
-        p_spoil = row["P_spoil"]
+        rsl = row["rsl"]
+        p_spoil = row["p_spoil"]
 
         if name.lower() in seen:
             continue

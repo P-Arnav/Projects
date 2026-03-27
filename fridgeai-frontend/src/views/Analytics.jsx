@@ -23,6 +23,8 @@ export default function Analytics({ items, dispatch, groceryItems }) {
   const [restock, setRestock] = useState([])
   const [restockLoading, setRestockLoading] = useState(false)
   const [addedIds, setAddedIds] = useState(new Set())
+  const [predictions, setPredictions] = useState([])
+  const [predsLoading, setPredsLoading] = useState(false)
 
   useEffect(() => {
     setRestockLoading(true)
@@ -31,6 +33,14 @@ export default function Analytics({ items, dispatch, groceryItems }) {
       .catch(() => {})
       .finally(() => setRestockLoading(false))
   }, [items])
+
+  useEffect(() => {
+    setPredsLoading(true)
+    api.getConsumptionPredictions()
+      .then(data => setPredictions(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setPredsLoading(false))
+  }, [])
 
   const handleAddToGrocery = async (suggestion) => {
     try {
@@ -147,6 +157,76 @@ export default function Analytics({ items, dispatch, groceryItems }) {
             Items with RSL expiring by each day
           </div>
         </div>
+      </section>
+
+      {/* Consumption Predictions */}
+      <section>
+        <SectionTitle>Consumption Behaviour & Predictions</SectionTitle>
+        {predsLoading ? (
+          <div style={{ color: C.muted, fontSize: 13, padding: '16px 0' }}>Analysing consumption history…</div>
+        ) : predictions.length === 0 ? (
+          <div style={{
+            background: C.surface, border: `1px solid ${C.border}`,
+            borderRadius: 12, padding: '20px 24px', color: C.muted, fontSize: 13,
+          }}>
+            No consumption history yet — predictions appear after items are consumed.
+          </div>
+        ) : (
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: C.surface2 }}>
+                  {['Item', 'Category', 'Times', 'Avg Interval', 'Weekly Rate', 'Next In', 'Confidence'].map(h => (
+                    <Th key={h}>{h}</Th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {predictions.map((p, i) => {
+                  const nextColor = p.predicted_next_days == null ? C.muted
+                    : p.predicted_next_days < 0 ? C.critical
+                    : p.predicted_next_days < 3 ? C.warn
+                    : C.safe
+                  const confColor = p.confidence === 'HIGH' ? C.safe
+                    : p.confidence === 'MEDIUM' ? C.warn
+                    : C.muted
+                  return (
+                    <tr key={p.name} style={{
+                      borderTop: `1px solid ${C.border}`,
+                      background: i % 2 === 0 ? 'transparent' : C.surface2 + '55',
+                    }}>
+                      <Td bold>{p.name}</Td>
+                      <Td muted>{p.category}</Td>
+                      <Td mono>{p.times_consumed}×</Td>
+                      <Td mono muted>
+                        {p.avg_interval_days != null ? `${p.avg_interval_days}d` : '—'}
+                      </Td>
+                      <Td mono muted>
+                        {p.weekly_rate != null ? `${p.weekly_rate}/wk` : '—'}
+                      </Td>
+                      <Td mono color={nextColor}>
+                        {p.predicted_next_days == null ? '—'
+                          : p.predicted_next_days < 0 ? `${Math.abs(p.predicted_next_days)}d ago`
+                          : `${p.predicted_next_days}d`}
+                      </Td>
+                      <Td>
+                        <span style={{
+                          background: confColor + '22', color: confColor,
+                          borderRadius: 4, padding: '2px 7px',
+                          fontSize: 10, fontWeight: 700,
+                          fontFamily: "'JetBrains Mono', monospace",
+                          letterSpacing: '0.05em',
+                        }}>
+                          {p.confidence}
+                        </span>
+                      </Td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       {/* FAPF Priority Table */}

@@ -9,12 +9,16 @@ export default function ScanModal({ onClose }) {
   const streamRef = useRef(null)
   const barcodeLoopRef = useRef(null)   // rAF handle for barcode scan loop
 
-  const [mode,       setMode]       = useState('detect')   // 'detect' | 'barcode'
+  const [mode,        setMode]        = useState('detect')   // 'detect' | 'barcode'
   const [status,      setStatus]      = useState('starting') // starting | ready | scanning | adding | done | error
   const [message,     setMessage]     = useState('')
   const [addedCount,  setAddedCount]  = useState(0)
   const [spoiledItems, setSpoiledItems] = useState([])
   const [lastBarcode, setLastBarcode]  = useState(null)    // {code, name, category}
+  const [continuous,  setContinuous]  = useState(false)
+  const continuousRef = useRef(false)
+  const statusRef     = useRef('starting')
+  const runningRef    = useRef(false)
 
   // ── Camera startup ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -152,11 +156,38 @@ export default function ScanModal({ onClose }) {
     }
   }
 
+  // Keep statusRef in sync so the continuous loop can read it without stale closure
+  useEffect(() => { statusRef.current = status }, [status])
+
+  // ── Continuous detection loop ───────────────────────────────────────────────
+  useEffect(() => {
+    continuousRef.current = continuous
+    if (!continuous) return
+    let cancelled = false
+
+    async function loop() {
+      while (!cancelled && continuousRef.current) {
+        if (statusRef.current === 'ready') {
+          await captureAndDetectInner(true)
+        }
+        await new Promise(r => setTimeout(r, 2000))
+      }
+    }
+    loop()
+    return () => { cancelled = true }
+  }, [continuous])  // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Grounding DINO capture ─────────────────────────────────────────────────
   async function captureAndDetect() {
+    await captureAndDetectInner(false)
+  }
+
+  async function captureAndDetectInner(isContinuous) {
+    if (runningRef.current) return
+    runningRef.current = true
     const video  = videoRef.current
     const canvas = canvasRef.current
-    if (!video || !canvas) return
+    if (!video || !canvas) { runningRef.current = false; return }
 
     canvas.width  = video.videoWidth
     canvas.height = video.videoHeight
@@ -172,12 +203,14 @@ export default function ScanModal({ onClose }) {
     } catch {
       setStatus('error')
       setMessage('Detection failed. Is the backend running with vision deps installed?')
+      runningRef.current = false
       return
     }
 
     if (!result.items || result.items.length === 0) {
       setStatus('ready')
       setMessage('No items detected. Try capturing again.')
+      runningRef.current = false
       return
     }
 
@@ -204,11 +237,19 @@ export default function ScanModal({ onClose }) {
       } catch { /* continue */ }
     }
 
-    setAddedCount(added)
+    setAddedCount(n => n + added)
     setSpoiledItems(spoiled)
-    setStatus('done')
-    setMessage('')
-    setTimeout(onClose, spoiled.length > 0 ? 4000 : 2000)
+    runningRef.current = false
+    if (isContinuous) {
+      setStatus('ready')
+      setMessage(added > 0
+        ? `Added ${added} item(s) — scanning again…`
+        : 'No new items — scanning again…')
+    } else {
+      setStatus('done')
+      setMessage('')
+      setTimeout(onClose, spoiled.length > 0 ? 4000 : 2000)
+    }
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -249,6 +290,12 @@ export default function ScanModal({ onClose }) {
           {status === 'starting' && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.muted, fontSize: 13 }}>
               Starting camera…
+            </div>
+          )}
+          {/* Continuous detect indicator */}
+          {mode === 'detect' && continuous && (
+            <div style={{ position: 'absolute', top: 10, left: 10, background: '#00000088', borderRadius: 6, padding: '4px 10px', color: C.teal, fontSize: 11, fontWeight: 700 }}>
+              {status === 'scanning' || status === 'adding' ? '⏳ DETECTING…' : '● LIVE DETECT'}
             </div>
           )}
           {/* Barcode mode: scanning indicator */}
@@ -296,15 +343,27 @@ export default function ScanModal({ onClose }) {
         )}
 
         {/* Actions */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, alignItems: 'center' }}>
           <button onClick={onClose} style={btnSecondary}>
             {addedCount > 0 ? 'Done' : 'Cancel'}
           </button>
           {mode === 'detect' && (
-            <button onClick={captureAndDetect} disabled={status !== 'ready'}
-              style={{ ...btnPrimary, opacity: status !== 'ready' ? 0.5 : 1 }}>
-              {status === 'scanning' ? 'Detecting…' : status === 'adding' ? 'Adding…' : 'Capture & Detect'}
-            </button>
+            <>
+              <button
+                onClick={() => setContinuous(v => !v)}
+                disabled={status === 'done' || status === 'error'}
+                style={{
+                  ...btnSecondary,
+                  borderColor: continuous ? C.teal : C.border2,
+                  color: continuous ? C.teal : C.muted,
+                }}>
+                {continuous ? '⏹ Stop Live' : '▶ Live Detect'}
+              </button>
+              <button onClick={captureAndDetect} disabled={status !== 'ready' || continuous}
+                style={{ ...btnPrimary, opacity: (status !== 'ready' || continuous) ? 0.5 : 1 }}>
+                {status === 'scanning' ? 'Detecting…' : status === 'adding' ? 'Adding…' : 'Capture & Detect'}
+              </button>
+            </>
           )}
           {mode === 'barcode' && (
             <div style={{ color: C.muted, fontSize: 12, alignSelf: 'center' }}>

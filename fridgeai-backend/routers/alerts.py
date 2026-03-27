@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends
-import aiosqlite
+import asyncpg
 
 from core.database import db_dependency
 from models.alerts import AlertRead
@@ -14,18 +14,17 @@ router = APIRouter(prefix="/alerts", tags=["alerts"])
 async def list_alerts(
     since: Optional[str] = None,
     limit: int = 100,
-    db: aiosqlite.Connection = Depends(db_dependency),
+    conn: asyncpg.Connection = Depends(db_dependency),
 ):
     query = "SELECT * FROM alerts"
     params: list = []
 
     if since:
-        query += " WHERE created_at >= ?"
         params.append(since)
+        query += f" WHERE created_at >= ${len(params)}"
 
-    query += " ORDER BY created_at DESC LIMIT ?"
     params.append(limit)
+    query += f" ORDER BY created_at DESC LIMIT ${len(params)}"
 
-    cur = await db.execute(query, params)
-    rows = await cur.fetchall()
+    rows = await conn.fetch(query, *params)
     return [AlertRead.from_row(r) for r in rows]

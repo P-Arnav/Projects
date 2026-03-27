@@ -1,10 +1,12 @@
 from __future__ import annotations
+import os
 import logging
 from datetime import datetime, timezone
 from typing import Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends
-import aiosqlite
+import asyncpg
 import httpx
 from pydantic import BaseModel
 
@@ -14,17 +16,16 @@ from websocket.manager import manager
 router = APIRouter(prefix="/recipes", tags=["recipes"])
 logger = logging.getLogger(__name__)
 
-MEALDB_BASE = "https://www.themealdb.com/api/json/v1/1"
+SPOONACULAR_BASE = "https://api.spoonacular.com"
+SPOONACULAR_KEY = os.getenv("SPOONACULAR_API_KEY", "d0cd5334fea44828b7525009b40b0e0a")
 
 
 class Recipe(BaseModel):
     meal_id: str
     name: str
     thumbnail: Optional[str] = None
-    category: Optional[str] = None
-    area: Optional[str] = None
-    instructions: Optional[str] = None
-    ingredients: list[str] = []
+    used_ingredients: list[str] = []
+    missed_ingredients: list[str] = []
 
 
 class CookRequest(BaseModel):
@@ -32,63 +33,45 @@ class CookRequest(BaseModel):
 
 
 @router.get("/suggestions", response_model=list[Recipe])
-async def get_recipe_suggestions(db: aiosqlite.Connection = Depends(db_dependency)):
-    """Return recipe suggestions based on current pantry items (via TheMealDB)."""
-    cur = await db.execute(
-        "SELECT DISTINCT name FROM items WHERE (P_spoil IS NULL OR P_spoil < 0.9) ORDER BY P_spoil DESC"
+async def get_recipe_suggestions(conn: asyncpg.Connection = Depends(db_dependency)):
+    """Return recipe suggestions based on current pantry items (via Spoonacular)."""
+    rows = await conn.fetch(
+        "SELECT DISTINCT name FROM items WHERE (p_spoil IS NULL OR p_spoil < 0.9) ORDER BY p_spoil DESC NULLS LAST"
     )
-    rows = await cur.fetchall()
 
     if not rows:
         return []
 
-    # Collect up to 6 ingredient names to query
-    ingredients = [row["name"].lower() for row in rows[:6]]
+    # Top 5 ingredient names
+    ingredients = ",".join(row["name"].lower() for row in rows[:5])
 
-    meal_map: dict[str, dict] = {}
-    async with httpx.AsyncClient(timeout=8.0) as client:
-        for ing in ingredients:
-            try:
-                resp = await client.get(f"{MEALDB_BASE}/filter.php", params={"i": ing})
-                if resp.status_code == 200:
-                    meals = resp.json().get("meals") or []
-                    for m in meals[:3]:
-                        meal_map[m["idMeal"]] = m
-            except Exception:
-                continue
-
-    if not meal_map:
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"{SPOONACULAR_BASE}/recipes/findByIngredients",
+                params={
+                    "ingredients": ingredients,
+                    "number": 5,
+                    "ranking": 2,   # minimize missing ingredients
+                    "ignorePantry": True,
+                    "apiKey": SPOONACULAR_KEY,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:
+        logger.warning("Spoonacular request failed: %s", exc)
         return []
 
     recipes: list[Recipe] = []
-    async with httpx.AsyncClient(timeout=8.0) as client:
-        for meal_id in list(meal_map.keys())[:8]:
-            try:
-                resp = await client.get(f"{MEALDB_BASE}/lookup.php", params={"i": meal_id})
-                if resp.status_code != 200:
-                    continue
-                meals = resp.json().get("meals") or []
-                if not meals:
-                    continue
-                m = meals[0]
-                ings = []
-                for i in range(1, 21):
-                    ing = (m.get(f"strIngredient{i}") or "").strip()
-                    measure = (m.get(f"strMeasure{i}") or "").strip()
-                    if ing:
-                        ings.append(f"{measure} {ing}".strip() if measure else ing)
-                instructions = (m.get("strInstructions") or "").strip()
-                recipes.append(Recipe(
-                    meal_id=m["idMeal"],
-                    name=m["strMeal"],
-                    thumbnail=m.get("strMealThumb"),
-                    category=m.get("strCategory"),
-                    area=m.get("strArea"),
-                    instructions=instructions[:500] if instructions else None,
-                    ingredients=ings,
-                ))
-            except Exception:
-                continue
+    for item in data:
+        recipes.append(Recipe(
+            meal_id=str(item["id"]),
+            name=item["title"],
+            thumbnail=item.get("image"),
+            used_ingredients=[i["name"] for i in item.get("usedIngredients", [])],
+            missed_ingredients=[i["name"] for i in item.get("missedIngredients", [])],
+        ))
 
     return recipes
 
@@ -97,39 +80,46 @@ async def get_recipe_suggestions(db: aiosqlite.Connection = Depends(db_dependenc
 async def cook_recipe(
     meal_id: str,
     body: CookRequest,
-    db: aiosqlite.Connection = Depends(db_dependency),
+    conn: asyncpg.Connection = Depends(db_dependency),
 ):
     """Record cooking a recipe — decrements quantity of the specified pantry items by 1."""
     now = datetime.now(tz=timezone.utc).isoformat()
     consumed: list[str] = []
 
     for item_id in body.item_ids:
-        cur = await db.execute(
-            "SELECT item_id, name, quantity FROM items WHERE item_id = ?", [item_id]
+        row = await conn.fetchrow(
+            "SELECT item_id, name, category, quantity FROM items WHERE item_id = $1", item_id
         )
-        row = await cur.fetchone()
         if row is None:
             continue
 
         new_qty = row["quantity"] - 1
         if new_qty <= 0:
-            await db.execute("DELETE FROM items WHERE item_id = ?", [item_id])
+            await conn.execute("DELETE FROM items WHERE item_id = $1", item_id)
             await manager.broadcast({
                 "event": "ITEM_DELETED",
                 "timestamp": now,
                 "data": {"item_id": item_id, "reason": "consumed"},
             })
         else:
-            await db.execute(
-                "UPDATE items SET quantity = ?, updated_at = ? WHERE item_id = ?",
-                [new_qty, now, item_id],
+            await conn.execute(
+                "UPDATE items SET quantity = $1, updated_at = $2 WHERE item_id = $3",
+                new_qty, now, item_id,
             )
             await manager.broadcast({
                 "event": "ITEM_UPDATED",
                 "timestamp": now,
                 "data": {"item_id": item_id, "changed_fields": {"quantity": new_qty}},
             })
+
+        # Record consumption history
+        hist_id = str(uuid4())
+        await conn.execute(
+            """INSERT INTO consumption_history
+               (id, item_id, item_name, category, quantity_consumed, reason, p_spoil_at_removal, consumed_at)
+               VALUES ($1,$2,$3,$4,$5,'cooked',$6,$7)""",
+            hist_id, item_id, row["name"], row["category"], 1, None, now,
+        )
         consumed.append(item_id)
 
-    await db.commit()
     return {"meal_id": meal_id, "consumed": consumed}
