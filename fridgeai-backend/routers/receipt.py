@@ -81,7 +81,7 @@ class ReceiptScanResult(BaseModel):
     items: list[ParsedItem]
     raw_text: str
     ocr_available: bool
-    ocr_engine: str  # "gpt4o" | "tesseract" | "easyocr" | "none"
+    ocr_engine: str  # "gemini" | "tesseract" | "easyocr" | "none"
 
 
 def _categorize(name: str) -> str:
@@ -143,7 +143,7 @@ def _parse_receipt_text(text: str) -> list[ParsedItem]:
 
 
 def _items_from_gpt_json(raw: list[dict]) -> list[ParsedItem]:
-    """Convert GPT-4o JSON output into ParsedItem list."""
+    """Convert Gemini JSON output into ParsedItem list."""
     items: list[ParsedItem] = []
     seen: set[str] = set()
     for entry in raw:
@@ -191,7 +191,7 @@ async def _ocr_with_gemini(image_bytes: bytes) -> tuple[list[ParsedItem], str]:
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}",
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}",
             headers={"Content-Type": "application/json"},
             json=payload,
         )
@@ -206,6 +206,22 @@ async def _ocr_with_gemini(image_bytes: bytes) -> tuple[list[ParsedItem], str]:
     items = _items_from_gpt_json(raw_data)
     raw_text = "\n".join(f"{i['name']} x{i.get('quantity',1)} ${i.get('price','?')}" for i in raw_data)
     return items, raw_text
+
+
+class ParseTextRequest(BaseModel):
+    text: str
+
+
+@router.post("/parse-text", response_model=ReceiptScanResult)
+async def parse_receipt_text_endpoint(body: ParseTextRequest):
+    """Parse raw OCR text (from client-side Tesseract.js) into food items."""
+    items = _parse_receipt_text(body.text)
+    return ReceiptScanResult(
+        items=items,
+        raw_text=body.text,
+        ocr_available=True,
+        ocr_engine="tesseract-js",
+    )
 
 
 @router.post("/scan", response_model=ReceiptScanResult)

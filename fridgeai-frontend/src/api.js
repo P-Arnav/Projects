@@ -110,6 +110,13 @@ export const api = {
     }).then(r => { if (!r.ok) throw r; return r.json() }),
 
   // Receipt OCR
+  parseReceiptText: (text) =>
+    fetch(`${BASE}/receipt/parse-text`, {
+      method: 'POST',
+      headers: jsonHeaders(),
+      body: JSON.stringify({ text }),
+    }).then(r => { if (!r.ok) throw r; return r.json() }),
+
   scanReceipt: (file) => {
     const fd = new FormData()
     fd.append('file', file, file.name)

@@ -5,12 +5,16 @@ import { api } from '../api.js'
 const fmt = (n, d = 2) => n == null ? '—' : Number(n).toFixed(d)
 const fmtPct = (n) => n == null ? '—' : `${(n * 100).toFixed(0)}%`
 
-// 7-day spoilage forecast: count items expiring by day d
+// 7-day spoilage forecast: count items expiring on day d (not cumulative)
 function buildForecast(items) {
   return Array.from({ length: 7 }, (_, d) => ({
     day: d,
     label: d === 0 ? 'Today' : `Day ${d}`,
-    count: items.filter(i => i.RSL != null && i.RSL <= d + 0.5).length,
+    count: items.filter(i =>
+      i.RSL != null &&
+      i.RSL <= d + 0.5 &&
+      i.RSL > d - 0.5
+    ).length,
   }))
 }
 
@@ -154,7 +158,7 @@ export default function Analytics({ items, dispatch, groceryItems }) {
             })}
           </div>
           <div style={{ fontSize: 12, color: C.muted, marginTop: 12 }}>
-            Items with RSL expiring by each day
+            Items expiring on each day
           </div>
         </div>
       </section>

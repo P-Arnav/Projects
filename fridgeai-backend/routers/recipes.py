@@ -16,8 +16,8 @@ from websocket.manager import manager
 router = APIRouter(prefix="/recipes", tags=["recipes"])
 logger = logging.getLogger(__name__)
 
+SPOONACULAR_API_KEY = os.getenv("SPOONACULAR_API_KEY", "")
 SPOONACULAR_BASE = "https://api.spoonacular.com"
-SPOONACULAR_KEY = os.getenv("SPOONACULAR_API_KEY", "d0cd5334fea44828b7525009b40b0e0a")
 
 
 class Recipe(BaseModel):
@@ -33,7 +33,7 @@ class RecipeDetails(BaseModel):
     source_url: Optional[str] = None
     ready_in_minutes: Optional[int] = None
     servings: Optional[int] = None
-    steps: list[str] = []   # plain-text steps from analyzedInstructions
+    steps: list[str] = []
 
 
 class CookRequest(BaseModel):
@@ -54,32 +54,32 @@ async def get_recipe_suggestions(conn: asyncpg.Connection = Depends(db_dependenc
     if not rows:
         return []
 
-    # Top 5 ingredient names
-    ingredients = ",".join(row["name"].lower() for row in rows[:5])
+    ingredient_list = [row["name"] for row in rows[:8]]
+    ingredients_str = ",".join(ingredient_list)
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(
                 f"{SPOONACULAR_BASE}/recipes/findByIngredients",
                 params={
-                    "ingredients": ingredients,
+                    "ingredients": ingredients_str,
                     "number": 5,
-                    "ranking": 2,   # minimize missing ingredients
+                    "ranking": 1,
                     "ignorePantry": True,
-                    "apiKey": SPOONACULAR_KEY,
+                    "apiKey": SPOONACULAR_API_KEY,
                 },
             )
             resp.raise_for_status()
             data = resp.json()
     except Exception as exc:
-        logger.error("Spoonacular request failed: %s", exc, exc_info=True)
+        logger.error("Spoonacular suggestions request failed: %s", exc, exc_info=True)
         return []
 
     recipes: list[Recipe] = []
     for item in data:
         recipes.append(Recipe(
             meal_id=str(item["id"]),
-            name=item["title"],
+            name=item.get("title", "Unknown Recipe"),
             thumbnail=item.get("image"),
             used_ingredients=[i["name"] for i in item.get("usedIngredients", [])],
             missed_ingredients=[i["name"] for i in item.get("missedIngredients", [])],
@@ -90,12 +90,12 @@ async def get_recipe_suggestions(conn: asyncpg.Connection = Depends(db_dependenc
 
 @router.get("/{meal_id}/details", response_model=RecipeDetails)
 async def get_recipe_details(meal_id: str):
-    """Fetch full recipe details (instructions, source URL) from Spoonacular on demand."""
+    """Fetch step-by-step cooking instructions from Spoonacular."""
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(
                 f"{SPOONACULAR_BASE}/recipes/{meal_id}/information",
-                params={"apiKey": SPOONACULAR_KEY, "addRecipeInformation": True},
+                params={"apiKey": SPOONACULAR_API_KEY},
             )
             resp.raise_for_status()
             data = resp.json()
@@ -103,18 +103,10 @@ async def get_recipe_details(meal_id: str):
         logger.error("Spoonacular details request failed: %s", exc, exc_info=True)
         return RecipeDetails(meal_id=meal_id)
 
-    # Extract plain-text steps from analyzedInstructions (preferred) or fall back to raw HTML stripped
     steps: list[str] = []
-    analyzed = data.get("analyzedInstructions") or []
-    if analyzed:
-        for step in analyzed[0].get("steps", []):
-            text = step.get("step", "").strip()
-            if text:
-                steps.append(text)
-    elif data.get("instructions"):
-        import re
-        plain = re.sub(r"<[^>]+>", " ", data["instructions"])
-        steps = [s.strip() for s in re.split(r"[\n.]+", plain) if s.strip()]
+    for instruction_block in data.get("analyzedInstructions", []):
+        for step in instruction_block.get("steps", []):
+            steps.append(step.get("step", ""))
 
     return RecipeDetails(
         meal_id=meal_id,

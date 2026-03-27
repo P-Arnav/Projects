@@ -1,12 +1,14 @@
 import { useState, useRef } from 'react'
 import { C, CATEGORIES } from '../constants.js'
 import { api } from '../api.js'
+import Tesseract from 'tesseract.js'
 
 export default function ReceiptModal({ onClose }) {
   const [step, setStep] = useState('upload')      // upload | review | adding | done
   const [file, setFile] = useState(null)
   const [preview, setPreview] = useState(null)
   const [scanning, setScanning] = useState(false)
+  const [ocrProgress, setOcrProgress] = useState(0)
   const [items, setItems] = useState([])
   const [rawText, setRawText] = useState('')
   const [error, setError] = useState(null)
@@ -28,17 +30,24 @@ export default function ReceiptModal({ onClose }) {
   const handleScan = async () => {
     if (!file) return
     setScanning(true)
+    setOcrProgress(0)
     setError(null)
     try {
-      const res = await api.scanReceipt(file)
+      const { data: { text } } = await Tesseract.recognize(file, 'eng', {
+        logger: m => {
+          if (m.status === 'recognizing text') setOcrProgress(Math.round(m.progress * 100))
+        },
+      })
+      const res = await api.parseReceiptText(text)
       setRawText(res.raw_text)
       setItems(res.items.map(item => ({ ...item, selected: true })))
       setStep('review')
     } catch (e) {
       const msg = await e.json?.().catch(() => null)
-      setError(msg?.detail || 'Scan failed. Ensure Tesseract is installed and the image is clear.')
+      setError(msg?.detail || 'Scan failed. Try a clearer photo of the receipt.')
     } finally {
       setScanning(false)
+      setOcrProgress(0)
     }
   }
 
@@ -117,7 +126,9 @@ export default function ReceiptModal({ onClose }) {
               <div style={{ color: C.critical, fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>{error}</div>
             )}
             <button onClick={handleScan} disabled={!file || scanning} style={primaryBtnStyle}>
-              {scanning ? 'Scanning…' : 'Scan Receipt'}
+              {scanning
+                ? ocrProgress > 0 ? `Scanning… ${ocrProgress}%` : 'Loading OCR…'
+                : 'Scan Receipt'}
             </button>
           </>
         )}
