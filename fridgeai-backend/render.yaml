@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: fridgeai-backend
+    runtime: python
+    buildCommand: pip install -r requirements-prod.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SPOONACULAR_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: REQUIRE_AUTH
+        value: "true"
+      - key: SETTLE_DELAY_SECONDS
+        value: "1800"
