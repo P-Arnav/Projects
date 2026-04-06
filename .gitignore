@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Model checkpoints (too large for git)
+*.pth
+checkpoints/
+
+# Data
+data/images/
+data/Data_Entry_2017.csv
+data/train_val_list.txt
+data/test_list.txt
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Environment
+.env
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+results/
+*.log
